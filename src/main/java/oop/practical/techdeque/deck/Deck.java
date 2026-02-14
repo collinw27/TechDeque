@@ -1,6 +1,7 @@
 package oop.practical.techdeque.deck;
 
 import java.util.ArrayList;
+import java.util.Optional;
 
 public final class Deck
 {
@@ -29,13 +30,13 @@ public final class Deck
         remainingCards = new ArrayList<>(cards);
     }
 
-    public Card drawTop()
+    public Optional<Card> drawTop()
     {
         if (isEmpty())
-            return null;
+            return Optional.empty();
         Card drawn = remainingCards.get(0);
         remainingCards.removeFirst();
-        return drawn;
+        return Optional.of(drawn);
     }
 
     public ArrayList<Card> drawCards(int amount)
@@ -44,7 +45,7 @@ public final class Deck
         for (int i = 0; i < amount; i++)
         {
             if (!isEmpty())
-                output.add(drawTop());
+                output.add(drawTop().get());
         }
         return output;
     }

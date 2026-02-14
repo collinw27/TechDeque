@@ -8,108 +8,78 @@ import oop.practical.techdeque.deck.Deck;
 import oop.practical.techdeque.game.Input;
 
 import java.util.ArrayList;
+import java.util.Optional;
 
 import static java.lang.Math.abs;
 import static java.lang.Math.max;
 
-public class CombatManager
+public final class CombatManager
 {
-    Deck playerDeck;
-    Deck enemyDeck;
+    private Deck playerDeck;
+    private Deck enemyDeck;
+    private boolean warMode;
 
-    public CombatManager(Deck playerDeck, Deck enemyDeck)
+    // Called `score` for generality, but represents HP in non-war mode
+
+    private int playerScore = 0;
+    private int enemyScore = 0;
+
+    private enum Entity { PLAYER, ENEMY, NONE, BOTH };
+
+    public CombatManager(Deck playerDeck, Deck enemyDeck, boolean warMode)
     {
         this.playerDeck = playerDeck.copy();
         this.enemyDeck = enemyDeck.copy();
+        this.warMode = warMode;
     }
 
-    public String startWar()
+    public String start()
     {
-        int playerScore = 0;
-        int enemyScore = 0;
+        return (warMode ? startWar() : startNormal());
+    }
 
+    private String startWar()
+    {
         while (true)
         {
             // Automatically draw
 
-            Card playerCard = playerDeck.drawTop();
-            Card enemyCard = enemyDeck.drawTop();
+            Optional<Card> playerCard = playerDeck.drawTop();
+            Optional<Card> enemyCard = enemyDeck.drawTop();
 
             // Terminate if neither drew a card (deck empty)
 
-            if (playerCard == null && enemyCard == null)
+            if (playerCard.isEmpty() && enemyCard.isEmpty())
                 break;
 
-            // Compare card values, with special cases for empty cards
+            // Play the cards against each other
+            // Abstracted to playCards() due to shared behavior with normal mode
 
-            if (enemyCard == null)
-            {
-                int points = calculateDamage(playerCard, enemyCard);
-                playerScore += points;
-                System.out.println(String.format(
-                    "You played %s vs nothing, scoring %s points! (%s, %s)",
-                    playerCard, points, playerScore, enemyScore
-                ));
-            }
-            else if (playerCard == null)
-            {
-                int points = -calculateDamage(playerCard, enemyCard);
-                enemyScore += points;
-                System.out.println(String.format(
-                    "You played nothing vs %s, opponent scores %s points! (%s, %s)",
-                    enemyCard, points, playerScore, enemyScore
-                ));
-            }
-            else
-            {
-                int points = calculateDamage(playerCard, enemyCard);
-                if (points == 0)
-                {
-                    System.out.println(String.format("It's a draw! (%s, %s)",
-                        playerScore, enemyScore)
-                    );
-                }
-                else if (points > 0)
-                {
-                    playerScore += points;
-                    System.out.println(String.format(
-                        "You played %s vs %s, scoring %s points! (%s, %s)",
-                        playerCard, enemyCard, points, playerScore, enemyScore
-                    ));
-                }
-                else
-                {
-                    enemyScore += -points;
-                    System.out.println(String.format(
-                        "You played %s vs %s, opponent scores %s points! (%s, %s)",
-                        playerCard, enemyCard, -points, playerScore, enemyScore
-                    ));
-                }
-            }
+            playCards(playerCard, enemyCard);
         }
 
-        System.out.println(String.format("Final: %s-%s", playerScore, enemyScore));
+        System.out.printf("Final: %s-%s%n", playerScore, enemyScore);
         return String.format("%s-%s", playerScore, enemyScore);
     }
 
-    public String startNormal()
+    private String startNormal()
     {
-        int playerHP = 10;
-        int enemyHP = 10;
-
         var parser = ArgumentParsers.newFor("").build();
         parser.addArgument("num").type(Integer.class).choices(Arguments.range(1, 3));
+
+        // Both start at 10 HP
+
+        playerScore = 10;
+        enemyScore = 10;
 
         while (true)
         {
             // Attempt to draw 3 cards, give player a choice
 
-            Card playerCard = null;
-            Card enemyCard = null;
+            Optional<Card> playerCard = Optional.empty();
+            Optional<Card> enemyCard = Optional.empty();
             ArrayList<Card> playerChoices = playerDeck.drawCards(3);
             ArrayList<Card> enemyChoices = enemyDeck.drawCards(3);
-            if (!enemyChoices.isEmpty())
-                enemyCard = enemyChoices.get(0);
 
             // Choose card 1-3
             // For edge case where fewer than 3 cards were drawn,
@@ -126,7 +96,7 @@ public class CombatManager
                 int cardIndex = Input.prompt(parser, "select 1-3: ").get("num");
                 cardIndex -= 1;
                 if (cardIndex < playerChoices.size())
-                    playerCard = playerChoices.get(cardIndex);
+                    playerCard = Optional.of(playerChoices.get(cardIndex));
             }
 
             // Enemy chooses highest-ranked card, with the
@@ -135,120 +105,149 @@ public class CombatManager
             if (!enemyChoices.isEmpty())
             {
                 int highestRank = 1;
-                enemyCard = enemyChoices.get(0);
+                enemyCard = Optional.of(enemyChoices.get(0));
                 for (int i = 1; i < enemyChoices.size(); i++)
                 {
                     if (enemyChoices.get(i).rank() > highestRank)
                     {
-                        enemyCard = enemyChoices.get(i);
-                        highestRank = enemyCard.rank();
+                        enemyCard = Optional.of(enemyChoices.get(i));
+                        highestRank = enemyCard.get().rank();
                     }
                 }
             }
 
             // Reshuffle here vs during block
 
-            if (playerCard == null)
+            if (playerCard.isEmpty())
                 playerDeck.reshuffle();
-            if (enemyCard == null)
+            if (enemyCard.isEmpty())
                 enemyDeck.reshuffle();
 
-            // Compare card values, with special cases for empty cards
+            // Play the cards against each other
+            // Abstracted to playCards() due to shared behavior with normal mode
 
-            if (enemyCard == null && playerCard == null)
-            {
-                playerHP = max(playerHP - 1, 0);
-                enemyHP = max(enemyHP - 1, 0);
-                System.out.println(String.format(
-                    "You and the enemy both reshuffled, taking 1 damage each! (%s, %s)",
-                    playerHP, enemyHP
-                ));
-            }
-            else if (enemyCard == null)
-            {
-                int points = calculateDamage(playerCard, enemyCard);
-                enemyHP = max(enemyHP - points, 0);
-                System.out.println(String.format(
-                    "The enemy reshuffled vs %s, taking %s damage! (%s, %s)",
-                    playerCard, points, playerHP, enemyHP
-                ));
-            }
-            else if (playerCard == null)
-            {
-                int points = -calculateDamage(playerCard, enemyCard);
-                playerHP = max(playerHP - points, 0);
-                System.out.println(String.format(
-                    "You reshuffled vs %s, taking %s damage! (%s, %s)",
-                    enemyCard, points, playerHP, enemyHP
-                ));
-            }
-            else
-            {
-                int points = calculateDamage(playerCard, enemyCard);
-                if (points == 0)
-                {
-                    System.out.println(String.format("It's a draw! (%s, %s)",
-                        playerHP, enemyHP)
-                    );
-                }
-                else if (points > 0)
-                {
-                    enemyHP = max(enemyHP - points, 0);
-                    System.out.println(String.format(
-                        "You played %s vs %s, dealing %s damage! (%s, %s)",
-                        playerCard, enemyCard, points, playerHP, enemyHP
-                    ));
-                }
-                else
-                {
-                    playerHP = max(playerHP + points, 0); // points are negative her
-                    System.out.println(String.format(
-                        "You played %s vs %s, taking %s damage! (%s, %s)",
-                        playerCard, enemyCard, -points, playerHP, enemyHP
-                    ));
-                }
-            }
+            playCards(playerCard, enemyCard);
 
             // End game when out of health
 
-            if (enemyHP <= 0 || playerHP <= 0)
+            if (enemyScore <= 0 || playerScore <= 0)
             {
-                if (enemyHP <= 0 && playerHP <= 0)
-                    System.out.println(String.format("It's a tie!", playerHP, enemyHP));
-                else if (enemyHP <= 0)
-                    System.out.println(String.format("You win %s-%s!", playerHP, enemyHP));
+                if (enemyScore <= 0 && playerScore <= 0)
+                    System.out.println(String.format("It's a draw!", playerScore, enemyScore));
+                else if (enemyScore <= 0)
+                    System.out.println(String.format("You win %s-%s!", playerScore, enemyScore));
                 else
-                    System.out.println(String.format("You lost %s-%s!", playerHP, enemyHP));
-                return String.format("%s-%s", playerHP, enemyHP);
+                    System.out.println(String.format("You lost %s-%s!", playerScore, enemyScore));
+                return String.format("%s-%s", playerScore, enemyScore);
             }
         }
     }
 
-    // If player wins, damage > 0
-    // If enemy wins, damage < 0
-
-    int calculateDamage(Card playerCard, Card enemyCard)
+    private void playCards(Optional<Card> playerCard, Optional<Card> enemyCard)
     {
-        // If no card played, use 1 + rank
+        // Start by working out how much damage was dealt, and to whom
 
-        if (enemyCard == null)
-            return 1 + playerCard.rank();
-        else if (playerCard == null)
-            return -(1 + enemyCard.rank());
+        int damage = 0;
+        Entity target = Entity.NONE;
+
+        // Both reshuffled: 1 damage each
+
+        if (enemyCard.isEmpty() && playerCard.isEmpty())
+        {
+            damage = 1;
+            target = Entity.BOTH;
+        }
+
+        // One entity reshuffled: 1 + RANK damage
+
+        else if (enemyCard.isEmpty())
+        {
+            damage = 1 + playerCard.get().rank();
+            target = Entity.ENEMY;
+        }
+        else if (playerCard.isEmpty())
+        {
+            damage = 1 + enemyCard.get().rank();
+            target = Entity.PLAYER;
+        }
 
         // Otherwise, work out damage based on type/rank differential
 
-        int typeDifference = playerCard.compareType(enemyCard);
-        int rankDifference = playerCard.compareRank(enemyCard);
-        int damage = 0;
-
-        // Bonus for type difference
-        // Keep the sign of typeDifference to match who takes damage
-
-        if (typeDifference != 0)
-            damage = (typeDifference > 0 ? 1 : -1) * (3 + abs(rankDifference));
         else
-            damage = rankDifference;
-        return damage;
+        {
+            int typeDifference = playerCard.get().compareType(enemyCard.get());
+            int rankDifference = playerCard.get().compareRank(enemyCard.get());
+
+            // Bonus for type difference
+            // Keep the sign of typeDifference to match who takes damage
+            // (positive = enemy takes damage, negative = player...)
+
+            if (typeDifference != 0)
+            {
+                target = (typeDifference > 0) ? Entity.ENEMY : Entity.PLAYER;
+                damage = (3 + abs(rankDifference));
+            }
+            else if (rankDifference != 0)
+            {
+                target = (rankDifference > 0) ? Entity.ENEMY : Entity.PLAYER;
+                damage = rankDifference;
+            }
+            else
+            {
+                target = Entity.NONE;
+            }
+        }
+
+        // Modify the score/HP, depending on mode
+
+        if (warMode)
+        {
+            if (target == Entity.PLAYER || target == Entity.BOTH)
+                enemyScore += damage;
+            if (target == Entity.ENEMY || target == Entity.BOTH)
+                playerScore += damage;
+        }
+        else
+        {
+            if (target == Entity.PLAYER || target == Entity.BOTH)
+                playerScore = max(playerScore - damage, 0);
+            if (target == Entity.ENEMY || target == Entity.BOTH)
+                enemyScore = max(enemyScore - damage, 0);
+        }
+
+        // Now for the fun part, print the appropriate message
+
+        String actionString = "";
+        if (target == Entity.NONE)
+            actionString = "It's a draw!";
+        else
+        {
+            if (playerCard.isEmpty())
+                actionString += (warMode) ? "You played nothing " : "You reshuffled ";
+            else
+                actionString += String.format("You played %s ", playerCard.get());
+
+            if (enemyCard.isEmpty())
+                actionString += (warMode) ? "vs nothing, " : "while the enemy reshuffled, ";
+            else
+                actionString += String.format("vs %s, ", enemyCard.get());
+
+            String pointsStr = String.format("%s point%s", damage, (damage == 1) ? "" : "s");
+            actionString += switch (target)
+            {
+                case Entity.ENEMY -> (warMode)
+                    ? String.format("scoring %s!", pointsStr)
+                    : String.format("dealing %s damage!", damage);
+                case Entity.PLAYER -> (warMode)
+                    ? String.format("enemy scores %s!", pointsStr)
+                    : String.format("taking %s damage!", damage);
+                case Entity.BOTH -> (warMode)
+                    ? String.format("everybody scores %s!", pointsStr)
+                    : String.format("everybody takes %s damage!", damage);
+                default -> throw new UnsupportedOperationException("Invalid target");
+            };
+        }
+
+        System.out.printf("%s (%s, %s)\n", actionString, playerScore, enemyScore);
     }
 }

@@ -124,10 +124,10 @@ public final class GameManager {
         return enemyDeckDefault;
     }
 
-    private String startCombat(Boolean war)
+    private String startCombat(Boolean warMode)
     {
-        CombatManager combat = new CombatManager(playerDeckDefault, enemyDeckDefault);
-        return war ? combat.startWar() : combat.startNormal();
+        CombatManager combat = new CombatManager(playerDeckDefault, enemyDeckDefault, warMode);
+        return combat.start();
     }
 
     private String startTest()
