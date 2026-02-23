@@ -1,0 +1,263 @@
+package oop.practical.techdeque.game;
+
+import net.sourceforge.argparse4j.ArgumentParsers;
+import net.sourceforge.argparse4j.impl.Arguments;
+import net.sourceforge.argparse4j.inf.Namespace;
+import oop.practical.techdeque.deck.Card;
+import oop.practical.techdeque.deck.Deck;
+import oop.practical.techdeque.deck.EditableDeck;
+
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.lang.reflect.Array;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+public final class GameManager
+{
+    HashMap<String, EditableDeck> savedDecks = new HashMap<>();
+    EditableDeck currentDeck = new EditableDeck();
+    boolean allowPrinting = true;
+
+    public List<Object> loop()
+    {
+        // See https://argparse4j.github.io for documentation
+        var parser = ArgumentParsers.newFor("").build();
+        var subparsers = parser.addSubparsers().dest("command");
+
+        var card = subparsers.addParser("card");
+        card.addArgument("spec").type(String.class);
+
+        var deck = subparsers.addParser("deck");
+        var deckSubparsers = deck.addSubparsers().dest("subcommand");
+        var deckView = deckSubparsers.addParser("view");
+        deckView.addArgument("name").type(String.class).nargs("?");
+        var deckEdit = deckSubparsers.addParser("edit");
+        deckEdit.addArgument("name").type(String.class).nargs("?");
+        var deckLoad = deckSubparsers.addParser("load");
+        deckLoad.addArgument("name").type(String.class);
+        var deckSave = deckSubparsers.addParser("save");
+        deckSave.addArgument("name").type(String.class);
+
+        var playerDeck = subparsers.addParser("playerDeck");
+        playerDeck.addArgument("--equip").type(String.class);
+        playerDeck.addArgument("cards").type(String.class).nargs("*");
+
+        var enemyDeck = subparsers.addParser("enemyDeck");
+        enemyDeck.addArgument("--equip").type(String.class);
+        enemyDeck.addArgument("cards").type(String.class).nargs("*");
+
+        var combat = subparsers.addParser("combat");
+        combat.addArgument("--war").action(Arguments.storeTrue());
+
+        print("Welcome to TechDeque! Enter -h for help.");
+        return Input.loop(parser, args -> switch (args.getString("command")) {
+            case "card" -> card(args.get("spec"));
+            case "deck" -> switch (args.getString("subcommand")) {
+                case "view" -> deckView(Optional.ofNullable(args.getString("name")));
+                case "edit" -> deckEdit(Optional.ofNullable(args.getString("name")));
+                case "load" -> deckLoad(args.getString("name"));
+                case "save" -> deckSave(args.getString("name"));
+                default -> throw new AssertionError(args.getString("subcommand"));
+            };
+            case "playerDeck" -> playerDeck(Optional.ofNullable(args.getString("equip")), args.get("cards"));
+            case "enemyDeck" -> enemyDeck(Optional.ofNullable(args.getString("equip")), args.get("cards"));
+            case "combat" -> combat(args.getBoolean("war"));
+            default -> throw new AssertionError(args.getString("command"));
+        });
+    }
+
+    private Card card(String spec)
+    {
+        String pattern1 = "([A-Z][a-z]*)-([IV]+)";
+        String pattern2 = "([a-z]+)([0-9])";
+        Matcher matcher = Pattern.compile(pattern1).matcher(spec);
+        Matcher bonusMatcher = Pattern.compile(pattern2).matcher(spec);
+
+        // Case 1: (Type)-(Roman Numeral)
+
+        if (spec.matches(pattern1) && matcher.find())
+        {
+            Card.Type cardType = Card.parseType(matcher.group(1));
+            Integer cardRank = Card.parseRank(matcher.group(2));
+            return new Card(cardType, cardRank);
+        }
+
+        // Case 2 (bonus): (type)(number)
+
+        else if (spec.matches(pattern2) && bonusMatcher.find())
+        {
+            Card.Type cardType = Card.parseType(bonusMatcher.group(1));
+            Integer cardRank;
+            try
+            {
+                cardRank = Integer.parseInt(bonusMatcher.group(2));
+            }
+            catch (NumberFormatException e)
+            {
+                throw new IllegalArgumentException("Invalid card rank: " + bonusMatcher.group(2));
+            }
+            if (!Card.isValidRank(cardRank))
+                throw new IllegalArgumentException("Invalid card rank: " + bonusMatcher.group(2));
+            return new Card(cardType, cardRank);
+        }
+
+        // Otherwise invalid
+
+        else
+        {
+            throw new IllegalArgumentException("Invalid card: " + spec);
+        }
+    }
+
+    // Prints the result of a command to the terminal
+    // Conditional: only applies if printing is enabled
+    // This is used to prevent output when this class is being
+    // used by the deckLoad() method
+
+    private void print(String str)
+    {
+        if (allowPrinting)
+            System.out.println(str);
+    }
+
+    private Deck generateDeck(List<String> cards)
+    {
+        ArrayList<Card> cardList = new ArrayList<>();
+        for (String card : cards)
+        {
+            cardList.add(card(card));
+        }
+        return new Deck(cardList);
+    }
+
+    private Object deckView(Optional<String> name)
+    {
+        EditableDeck selectedDeck;
+        if (name.isEmpty())
+            selectedDeck = currentDeck;
+        else if (savedDecks.containsKey(name.get()))
+            selectedDeck = savedDecks.get(name);
+        else
+            throw new IllegalArgumentException("Invalid deck: " + name.get());
+        print("Contents of deck (%s cards total):\n".formatted(selectedDeck.getSize()));
+        print(selectedDeck.getViewString());
+        return selectedDeck;
+    }
+
+    private List<Object> deckEdit(Optional<String> name)
+    {
+        EditableDeck selectedDeck;
+
+        // If no name provided, edit player's current deck
+
+        if (name.isEmpty())
+        {
+            selectedDeck = currentDeck;
+            print("Now editing current deck.\n");
+        }
+
+        // Otherwise, retrieve named deck, creating it if necessary
+
+        else
+        {
+            if (!savedDecks.containsKey(name.get()))
+                savedDecks.put(name.get(), new EditableDeck());
+            selectedDeck = savedDecks.get(name.get());
+            print("Now editing deck \"%s\".\n".formatted(name.get()));
+        }
+
+        var parser = ArgumentParsers.newFor("").build();
+        var subparsers = parser.addSubparsers().dest("command");
+        var clear = subparsers.addParser("clear");
+        var add = subparsers.addParser("add");
+        add.addArgument("card").type(String.class);
+        add.addArgument("copies").type(Integer.class).nargs("?").setDefault(1);
+        var remove = subparsers.addParser("remove");
+        remove.addArgument("card").type(String.class);
+        remove.addArgument("copies").type(Integer.class).nargs("?").setDefault(1);;
+        var exit = subparsers.addParser("exit");
+
+        List<Object> results = Input.loop( parser, args -> switch (args.getString("command")) {
+            case "clear" -> deckEditClear(selectedDeck);
+            case "add" -> deckEditAdd(selectedDeck, args.getString("card"), args.getInt("copies"));
+            case "remove" -> deckEditRemove(selectedDeck, args.getString("card"), args.getInt("copies"));
+            case "exit" -> null;
+            default -> throw new AssertionError(args.getString("command"));
+        });
+        print("Exited deck editor.");
+        return results;
+    }
+
+    private int deckEditClear(EditableDeck deck)
+    {
+        print("Cleared deck.");
+        return deck.clear();
+    }
+
+    private int deckEditAdd(EditableDeck deck, String cardString, int copies)
+    {
+        Card card = card(cardString);
+        if (copies <= 0)
+            throw new IllegalArgumentException("Invalid quantity");
+        int result = deck.addCard(card, copies);
+        print("Added %s cop%s of %s.\n".formatted(result, result == 1 ? "y":"ies", card));
+        return result;
+    }
+
+    private int deckEditRemove(EditableDeck deck, String cardString, int copies)
+    {
+        Card card = card(cardString);
+        if (copies <= 0)
+            throw new IllegalArgumentException("Invalid quantity");
+        int result = deck.removeCard(card, copies);
+        print("Removed %s cop%s of %s.\n".formatted(result, result == 1 ? "y":"ies", card));
+        return result;
+    }
+
+    private Object deckLoad(String name)
+    {
+        try
+        {
+            allowPrinting = false;
+            List<Object> result = Save.load(this, name);
+            allowPrinting = true;
+            for (Object o : result)
+            {
+                if (o instanceof Exception)
+                    throw new IllegalArgumentException(((Exception) o).getMessage());
+            }
+            print("Loaded deck \"%s\".\n".formatted(name));
+            return savedDecks.get(name);
+        }
+        catch (IOException e)
+        {
+            throw new UncheckedIOException("Invalid deck.", e);
+        }
+    }
+
+    private boolean deckSave(String name)
+    {
+        throw new UnsupportedOperationException("TODO");
+        //return true; //Note: Just always return true as failure throws.
+    }
+
+    private Object playerDeck(Optional<String> equip, List<String> cards)
+    {
+        throw new UnsupportedOperationException("TODO");
+    }
+
+    private Object enemyDeck(Optional<String> equip, List<String> cards)
+    {
+        throw new UnsupportedOperationException("TODO");
+    }
+
+    private Object combat(boolean war)
+    {
+        throw new UnsupportedOperationException("TODO");
+    }
+}
