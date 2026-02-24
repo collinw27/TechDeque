@@ -21,6 +21,7 @@ public final class GameManager
 {
     HashMap<String, EditableDeck> savedDecks = new HashMap<>();
     EditableDeck currentDeck = new EditableDeck();
+    EditableDeck enemyDeck = new EditableDeck();
     boolean allowPrinting = true;
 
     public List<Object> loop()
@@ -82,17 +83,23 @@ public final class GameManager
 
         if (spec.matches(pattern1) && matcher.find())
         {
-            Card.Type cardType = Card.parseType(matcher.group(1));
-            Integer cardRank = Card.parseRank(matcher.group(2));
-            return new Card(cardType, cardRank);
+            Optional<Card.Type> cardType = Card.parseType(matcher.group(1));
+            if (cardType.isEmpty())
+                throw new IllegalArgumentException("Invalid card type: " + matcher.group(1));
+            Optional<Integer> cardRank = Card.parseRank(matcher.group(2));
+            if (cardRank.isEmpty())
+                throw new IllegalArgumentException("Invalid card rank: " + matcher.group(2));
+            return new Card(cardType.get(), cardRank.get());
         }
 
         // Case 2 (bonus): (type)(number)
 
         else if (spec.matches(pattern2) && bonusMatcher.find())
         {
-            Card.Type cardType = Card.parseType(bonusMatcher.group(1));
-            Integer cardRank;
+            Optional<Card.Type> cardType = Card.parseType(bonusMatcher.group(1));
+            if (cardType.isEmpty())
+                throw new IllegalArgumentException("Invalid card type: " + bonusMatcher.group(1));
+            int cardRank;
             try
             {
                 cardRank = Integer.parseInt(bonusMatcher.group(2));
@@ -103,14 +110,17 @@ public final class GameManager
             }
             if (!Card.isValidRank(cardRank))
                 throw new IllegalArgumentException("Invalid card rank: " + bonusMatcher.group(2));
-            return new Card(cardType, cardRank);
+            return new Card(cardType.get(), cardRank);
         }
 
-        // Otherwise invalid
+        // Case 3: (specialty name)
 
         else
         {
-            throw new IllegalArgumentException("Invalid card: " + spec);
+            Optional<Card.Specialty> specialty = Card.parseSpecialty(spec);
+            if (specialty.isEmpty())
+                throw new IllegalArgumentException("Invalid card: " + spec);
+            return new Card(specialty.get());
         }
     }
 
@@ -141,11 +151,11 @@ public final class GameManager
         if (name.isEmpty())
             selectedDeck = currentDeck;
         else if (savedDecks.containsKey(name.get()))
-            selectedDeck = savedDecks.get(name);
+            selectedDeck = savedDecks.get(name.get());
         else
             throw new IllegalArgumentException("Invalid deck: " + name.get());
-        print("Contents of deck (%s cards total):\n".formatted(selectedDeck.getSize()));
-        print(selectedDeck.getViewString());
+        print("Contents of deck (%s cards total):".formatted(selectedDeck.getSize()));
+        print(String.join("\n", selectedDeck.getStringList()));
         return selectedDeck;
     }
 
@@ -158,7 +168,7 @@ public final class GameManager
         if (name.isEmpty())
         {
             selectedDeck = currentDeck;
-            print("Now editing current deck.\n");
+            print("Now editing current deck.");
         }
 
         // Otherwise, retrieve named deck, creating it if necessary
@@ -168,7 +178,7 @@ public final class GameManager
             if (!savedDecks.containsKey(name.get()))
                 savedDecks.put(name.get(), new EditableDeck());
             selectedDeck = savedDecks.get(name.get());
-            print("Now editing deck \"%s\".\n".formatted(name.get()));
+            print("Now editing deck \"%s\".".formatted(name.get()));
         }
 
         var parser = ArgumentParsers.newFor("").build();
@@ -182,7 +192,7 @@ public final class GameManager
         remove.addArgument("copies").type(Integer.class).nargs("?").setDefault(1);;
         var exit = subparsers.addParser("exit");
 
-        List<Object> results = Input.loop( parser, args -> switch (args.getString("command")) {
+        List<Object> results = Input.loop(parser, args -> switch (args.getString("command")) {
             case "clear" -> deckEditClear(selectedDeck);
             case "add" -> deckEditAdd(selectedDeck, args.getString("card"), args.getInt("copies"));
             case "remove" -> deckEditRemove(selectedDeck, args.getString("card"), args.getInt("copies"));
@@ -205,7 +215,7 @@ public final class GameManager
         if (copies <= 0)
             throw new IllegalArgumentException("Invalid quantity");
         int result = deck.addCard(card, copies);
-        print("Added %s cop%s of %s.\n".formatted(result, result == 1 ? "y":"ies", card));
+        print("Added %s cop%s of %s.".formatted(result, result == 1 ? "y":"ies", card));
         return result;
     }
 
@@ -215,7 +225,7 @@ public final class GameManager
         if (copies <= 0)
             throw new IllegalArgumentException("Invalid quantity");
         int result = deck.removeCard(card, copies);
-        print("Removed %s cop%s of %s.\n".formatted(result, result == 1 ? "y":"ies", card));
+        print("Removed %s cop%s of %s.".formatted(result, result == 1 ? "y":"ies", card));
         return result;
     }
 
@@ -231,7 +241,7 @@ public final class GameManager
                 if (o instanceof Exception)
                     throw new IllegalArgumentException(((Exception) o).getMessage());
             }
-            print("Loaded deck \"%s\".\n".formatted(name));
+            print("Loaded deck \"%s\".".formatted(name));
             return savedDecks.get(name);
         }
         catch (IOException e)
@@ -242,18 +252,62 @@ public final class GameManager
 
     private boolean deckSave(String name)
     {
-        throw new UnsupportedOperationException("TODO");
-        //return true; //Note: Just always return true as failure throws.
+        if (!savedDecks.containsKey(name))
+            throw new IllegalArgumentException("Invalid deck: " + name);
+        EditableDeck selectedDeck = savedDecks.get(name);
+
+        String fileBody = "deck edit %s\nclear\n".formatted(name);
+        fileBody += String.join("\n", selectedDeck.getStringList().stream().map(
+            s -> "add %s 1".formatted(s)).toList()
+        );
+        fileBody += "\nexit\n";
+
+        try
+        {
+            Save.save(name + "Deck.txt", fileBody);
+            return true;
+        }
+        catch (IOException e)
+        {
+            throw new UncheckedIOException("Invalid deck.", e);
+        }
     }
 
     private Object playerDeck(Optional<String> equip, List<String> cards)
     {
-        throw new UnsupportedOperationException("TODO");
+        currentDeck = equipDeck(equip, cards);
+        return currentDeck;
     }
 
     private Object enemyDeck(Optional<String> equip, List<String> cards)
     {
-        throw new UnsupportedOperationException("TODO");
+        enemyDeck = equipDeck(equip, cards);
+        return enemyDeck;
+    }
+
+    // Used by both player and enemy for deck validation
+
+    private EditableDeck equipDeck(Optional<String> equip, List<String> cards)
+    {
+        EditableDeck deck = new EditableDeck();
+        if (equip.isPresent())
+        {
+            if (!cards.isEmpty())
+                throw new IllegalArgumentException("Both card list and --equip provided");
+            if (!savedDecks.containsKey(equip.get()))
+                throw new IllegalArgumentException("Invalid deck: " + equip.get());
+            deck = savedDecks.get(equip.get());
+        }
+        else
+        {
+            for (String card : cards)
+            {
+                deck.addCard(card(card), 1);
+            }
+        }
+
+        deck.validate();
+        return deck;
     }
 
     private Object combat(boolean war)

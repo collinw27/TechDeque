@@ -100,9 +100,65 @@ public final class Practical2Tests {
             Arguments.of("Type Balance", """
                 deck edit name
                 add Grass-V 1
+                add Solarbeam 1
                 add Fire-I 3
                 add Fire-II 3
-                add Fire-III 3
+                add Fire-III 2
+                exit
+                playerDeck --equip name
+                """, IllegalArgumentException.class),
+            Arguments.of("Valid copies", """
+                deck edit name
+                add Grass-V 1
+                add Solarbeam 1
+                add Fire-I 2
+                add Grass-I 3
+                add Grass-II 3
+                add Grass-III 2
+                exit
+                playerDeck --equip name
+                """, true),
+            Arguments.of("Too many rank I", """
+                deck edit name
+                add Grass-V 1
+                add Solarbeam 1
+                add Fire-I 2
+                add Grass-I 4
+                add Grass-II 3
+                add Grass-III 2
+                exit
+                playerDeck --equip name
+                """, IllegalArgumentException.class),
+            Arguments.of("Too many rank III", """
+                deck edit name
+                add Grass-V 1
+                add Solarbeam 1
+                add Fire-I 2
+                add Grass-I 3
+                add Grass-II 3
+                add Grass-III 3
+                exit
+                playerDeck --equip name
+                """, IllegalArgumentException.class),
+            Arguments.of("Too many rank V", """
+                deck edit name
+                add Grass-V 1
+                add Solarbeam 2
+                add Fire-I 2
+                add Grass-I 3
+                add Grass-II 3
+                add Grass-III 2
+                exit
+                playerDeck --equip name
+                """, IllegalArgumentException.class),
+            Arguments.of("Invalid rank V type", """
+                deck edit name
+                add Grass-V 1
+                add Tempest 1
+                add Fire-I 2
+                add Grass-I 3
+                add Grass-II 3
+                add Grass-III 2
                 exit
                 playerDeck --equip name
                 """, IllegalArgumentException.class)

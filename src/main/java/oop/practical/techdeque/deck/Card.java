@@ -4,16 +4,21 @@ import org.jspecify.annotations.NonNull;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Optional;
 
 // Important: rank is stored from 1-5, not 0-4
 
-public record Card
-(Type type, Integer rank)
+public final class Card
 {
-    public enum Type {
-        GRASS(0),
-        FIRE(1),
-        WATER(2);
+    Type type;
+    int rank;
+    Optional<Specialty> specialty;
+
+    public enum Type
+    {
+        Grass(0),
+        Fire(1),
+        Water(2);
 
         // Types are internally declared with an index to allow
         // rock-paper-scissors comparison
@@ -30,43 +35,103 @@ public record Card
         @Override
         public String toString()
         {
-            return name().charAt(0) + name().substring(1).toLowerCase();
+            return name();
         }
     }
 
-    public enum Specialty {
-        NONE,
-        SHIELD,
-        SPEAR,
-        ULTIMATE
+    private enum SpecialtyType
+    {
+        SHIELD(1),
+        SPEAR(3),
+        ULTIMATE(5);
+
+        public final int rank;
+
+        SpecialtyType(int rank)
+        {
+            this.rank = rank;
+        }
+    }
+
+    public enum Specialty
+    {
+        GrassShield(Type.Grass, SpecialtyType.SHIELD),
+        WaterShield(Type.Water, SpecialtyType.SHIELD),
+        FireShield(Type.Fire, SpecialtyType.SHIELD),
+        GrassSpear(Type.Grass, SpecialtyType.SPEAR),
+        WaterSpear(Type.Water, SpecialtyType.SPEAR),
+        FireSpear(Type.Fire, SpecialtyType.SPEAR),
+        Solarbeam(Type.Grass, SpecialtyType.ULTIMATE),
+        Tempest(Type.Water, SpecialtyType.ULTIMATE),
+        Inferno(Type.Fire, SpecialtyType.ULTIMATE);
+
+        public final Type type;
+        public final SpecialtyType specialtyType;
+
+        Specialty(Type type, SpecialtyType specialtyType)
+        {
+            this.type = type;
+            this.specialtyType = specialtyType;
+        }
     }
 
     private static final ArrayList<String> rankStrings = new ArrayList(Arrays.asList(
         "I", "II", "III", "IV", "V"
     ));
 
+    // Two different constructors for normal vs. specialty
+    // This prevents a redundant rank argument for specialty cards
+
+    public Card(Type type, int rank)
+    {
+        this.type = type;
+        this.rank = rank;
+        this.specialty = Optional.empty();
+    }
+
+    public Card(Specialty specialty)
+    {
+        this.type = specialty.type;
+        this.specialty = Optional.of(specialty);
+        this.rank = specialty.specialtyType.rank;
+    }
+
+    public int rank() { return rank; }
+    public Type type() { return type; }
+
     // Methods that verify the validity of Card formatting are implemented here
     // This is maybe more abstracted than necessary, but it feels more correct than
     // allowing the GameManager to enforce its own constraints on Card state
 
-    public static Type parseType(String str) throws IllegalArgumentException
+    public static Optional<Type> parseType(String str) throws IllegalArgumentException
     {
         try
         {
-            return Type.valueOf(str.toUpperCase());
+            str = str.isEmpty() ? "" : (str.substring(0, 1).toUpperCase()) + str.substring(1);
+            return Optional.of(Type.valueOf(str));
         }
         catch (IllegalArgumentException e)
         {
-            throw new IllegalArgumentException("Invalid card type: " + str);
+            return Optional.empty();
         }
     }
 
-    public static int parseRank(String str)
+    public static Optional<Integer> parseRank(String str)
     {
         int index = rankStrings.indexOf(str);
-        if (index >= 0)
-            return index + 1;
-        throw new IllegalArgumentException("Invalid card rank: " + str);
+        return (index >= 0) ? Optional.of(index + 1) : Optional.empty();
+    }
+
+    public static Optional<Specialty> parseSpecialty(String str)
+    {
+        try
+        {
+            return Optional.of(Specialty.valueOf(str));
+        }
+        catch (IllegalArgumentException e)
+        {
+            return Optional.empty();
+        }
     }
 
     public static boolean isValidRank(Integer rank)
@@ -77,7 +142,18 @@ public record Card
     @Override @NonNull
     public String toString()
     {
-        return type.toString() + "-" + rankStrings.get(rank - 1);
+        if (specialty.isEmpty())
+            return type.toString() + "-" + rankStrings.get(rank - 1);
+        else
+            return specialty.get().name();
+    }
+
+    @Override
+    public boolean equals(Object obj)
+    {
+        if (obj instanceof Card c)
+            return (type.equals(c.type) && rank == c.rank == specialty.equals(c.specialty));
+        return false;
     }
 
     // Returns a positive number if type(this) > type(other)
