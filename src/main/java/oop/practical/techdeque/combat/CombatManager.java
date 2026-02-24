@@ -2,7 +2,6 @@ package oop.practical.techdeque.combat;
 
 import net.sourceforge.argparse4j.ArgumentParsers;
 import net.sourceforge.argparse4j.impl.Arguments;
-import net.sourceforge.argparse4j.inf.Namespace;
 import oop.practical.techdeque.deck.Card;
 import oop.practical.techdeque.deck.Deck;
 import oop.practical.techdeque.game.Input;
@@ -24,7 +23,19 @@ public final class CombatManager
     private int playerScore = 0;
     private int enemyScore = 0;
 
-    private enum Entity { PLAYER, ENEMY, NONE, BOTH };
+    private enum Entity {
+        NONE, PLAYER, ENEMY, BOTH;
+
+        public Entity opponent()
+        {
+            return switch (this)
+            {
+                case PLAYER -> ENEMY;
+                case ENEMY -> PLAYER;
+                default -> NONE;
+            };
+        }
+    }
 
     public CombatManager(Deck playerDeck, Deck enemyDeck, boolean warMode)
     {
@@ -143,40 +154,46 @@ public final class CombatManager
         }
     }
 
-    private void playCards(Optional<Card> playerCard, Optional<Card> enemyCard)
+    private void playCards(Optional<Card> playerChoice, Optional<Card> enemyChoice)
     {
         // Start by working out how much damage was dealt, and to whom
+        // Do-While is used to allow `break`, reducing nested if-else
 
         int damage = 0;
         Entity target = Entity.NONE;
 
         // Both reshuffled: 1 damage each
 
-        if (enemyCard.isEmpty() && playerCard.isEmpty())
+        do
         {
-            damage = 1;
-            target = Entity.BOTH;
-        }
+            if (enemyChoice.isEmpty() && playerChoice.isEmpty())
+            {
+                damage = 1;
+                target = Entity.BOTH;
+                break;
+            }
 
-        // One entity reshuffled: 1 + RANK damage
+            // One entity reshuffled: 1 + RANK damage
 
-        else if (enemyCard.isEmpty())
-        {
-            damage = 1 + playerCard.get().rank();
-            target = Entity.ENEMY;
-        }
-        else if (playerCard.isEmpty())
-        {
-            damage = 1 + enemyCard.get().rank();
-            target = Entity.PLAYER;
-        }
+            if (enemyChoice.isEmpty())
+            {
+                damage = 1 + playerChoice.get().rank();
+                target = Entity.ENEMY;
+                break;
+            }
+            else if (playerChoice.isEmpty())
+            {
+                damage = 1 + enemyChoice.get().rank();
+                target = Entity.PLAYER;
+                break;
+            }
 
-        // Otherwise, work out damage based on type/rank differential
+            // Otherwise, work out damage based on specialty or type/rank differential
 
-        else
-        {
-            int typeDifference = playerCard.get().compareType(enemyCard.get());
-            int rankDifference = playerCard.get().compareRank(enemyCard.get());
+            Card playerCard = playerChoice.get();
+            Card enemyCard = enemyChoice.get();
+            int typeDifference = playerCard.compareType(enemyCard);
+            int rankDifference = playerCard.compareRank(enemyCard);
 
             // Bonus for type difference
             // Keep the sign of typeDifference to match who takes damage
@@ -195,8 +212,66 @@ public final class CombatManager
             else
             {
                 target = Entity.NONE;
+                break;
+            }
+
+            // Now that targets have been decided, work out if specialty cards
+            // cancel out any behavior
+
+            Card actorCard = (target == Entity.ENEMY) ? playerCard : enemyCard;
+            Card targetCard = (target == Entity.PLAYER) ? playerCard : enemyCard;
+            Optional<Card.Specialty> actorSpecialty = actorCard.specialty();
+            Optional<Card.Specialty> targetSpecialty = targetCard.specialty();
+
+            // The actor/target were decided as the result of type/rank differences
+            // This eliminates the need for certain checks,
+            // e.g. the actor will never be at a type disadvantage
+
+            if (targetSpecialty.isPresent() && targetSpecialty.get().equals(Card.Specialty.SHIELD))
+            {
+                // Shield negation
+
+                if (typeDifference == 0)
+                    damage = 0;
+
+                // Spear override (potential type advantage)
+
+                if (actorSpecialty.isPresent() && actorSpecialty.get().equals(Card.Specialty.SPEAR))
+                {
+                    damage = 1;
+                    if (typeDifference != 0)
+                        damage += 3 + abs(rankDifference);
+                }
+            }
+            if (actorSpecialty.isPresent() && actorSpecialty.get().equals(Card.Specialty.SHIELD))
+            {
+                // Shield no-op
+
+                damage = 0;
+
+                // Spear override (no type advantage)
+
+                if (targetSpecialty.isPresent() && targetSpecialty.get().equals(Card.Specialty.SPEAR))
+                {
+                    damage = 1;
+                    target = target.opponent();
+                }
+            }
+            if (actorSpecialty.isPresent() && actorSpecialty.get().equals(Card.Specialty.ULTIMATE))
+            {
+                // Ultimate attack
+
+                if (typeDifference != 0 && targetCard.rank() <= 2)
+                    damage += 1;
+            }
+            if (targetSpecialty.isPresent() && targetSpecialty.get().equals(Card.Specialty.ULTIMATE))
+            {
+                // Ultimate negation (priority over offensive ultimate card)
+
+                damage = 0;
             }
         }
+        while (false);
 
         // Modify the score/HP, depending on mode
 
@@ -222,15 +297,15 @@ public final class CombatManager
             actionString = "It's a draw!";
         else
         {
-            if (playerCard.isEmpty())
+            if (playerChoice.isEmpty())
                 actionString += (warMode) ? "You played nothing " : "You reshuffled ";
             else
-                actionString += String.format("You played %s ", playerCard.get());
+                actionString += String.format("You played %s ", playerChoice.get());
 
-            if (enemyCard.isEmpty())
+            if (enemyChoice.isEmpty())
                 actionString += (warMode) ? "vs nothing, " : "while the enemy reshuffled, ";
             else
-                actionString += String.format("vs %s, ", enemyCard.get());
+                actionString += String.format("vs %s, ", enemyChoice.get());
 
             String pointsStr = String.format("%s point%s", damage, (damage == 1) ? "" : "s");
             actionString += switch (target)

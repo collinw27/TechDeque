@@ -12,7 +12,7 @@ public final class Card
 {
     Type type;
     int rank;
-    Optional<Specialty> specialty;
+    Optional<SpecialtyCard> specialtyCard;
 
     public enum Type
     {
@@ -39,7 +39,7 @@ public final class Card
         }
     }
 
-    private enum SpecialtyType
+    public enum Specialty
     {
         SHIELD(1),
         SPEAR(3),
@@ -47,31 +47,31 @@ public final class Card
 
         public final int rank;
 
-        SpecialtyType(int rank)
+        Specialty(int rank)
         {
             this.rank = rank;
         }
     }
 
-    public enum Specialty
+    public enum SpecialtyCard
     {
-        GrassShield(Type.Grass, SpecialtyType.SHIELD),
-        WaterShield(Type.Water, SpecialtyType.SHIELD),
-        FireShield(Type.Fire, SpecialtyType.SHIELD),
-        GrassSpear(Type.Grass, SpecialtyType.SPEAR),
-        WaterSpear(Type.Water, SpecialtyType.SPEAR),
-        FireSpear(Type.Fire, SpecialtyType.SPEAR),
-        Solarbeam(Type.Grass, SpecialtyType.ULTIMATE),
-        Tempest(Type.Water, SpecialtyType.ULTIMATE),
-        Inferno(Type.Fire, SpecialtyType.ULTIMATE);
+        GrassShield(Type.Grass, Specialty.SHIELD),
+        WaterShield(Type.Water, Specialty.SHIELD),
+        FireShield(Type.Fire, Specialty.SHIELD),
+        GrassSpear(Type.Grass, Specialty.SPEAR),
+        WaterSpear(Type.Water, Specialty.SPEAR),
+        FireSpear(Type.Fire, Specialty.SPEAR),
+        Solarbeam(Type.Grass, Specialty.ULTIMATE),
+        Tempest(Type.Water, Specialty.ULTIMATE),
+        Inferno(Type.Fire, Specialty.ULTIMATE);
 
         public final Type type;
-        public final SpecialtyType specialtyType;
+        public final Specialty specialty;
 
-        Specialty(Type type, SpecialtyType specialtyType)
+        SpecialtyCard(Type type, Specialty specialty)
         {
             this.type = type;
-            this.specialtyType = specialtyType;
+            this.specialty = specialty;
         }
     }
 
@@ -86,18 +86,22 @@ public final class Card
     {
         this.type = type;
         this.rank = rank;
-        this.specialty = Optional.empty();
+        this.specialtyCard = Optional.empty();
     }
 
-    public Card(Specialty specialty)
+    public Card(SpecialtyCard specialtyCard)
     {
-        this.type = specialty.type;
-        this.specialty = Optional.of(specialty);
-        this.rank = specialty.specialtyType.rank;
+        this.type = specialtyCard.type;
+        this.specialtyCard = Optional.of(specialtyCard);
+        this.rank = specialtyCard.specialty.rank;
     }
 
     public int rank() { return rank; }
     public Type type() { return type; }
+    public Optional<Specialty> specialty()
+    {
+        return (specialtyCard.isPresent()) ? Optional.of(specialtyCard.get().specialty) : Optional.empty();
+    }
 
     // Methods that verify the validity of Card formatting are implemented here
     // This is maybe more abstracted than necessary, but it feels more correct than
@@ -122,11 +126,11 @@ public final class Card
         return (index >= 0) ? Optional.of(index + 1) : Optional.empty();
     }
 
-    public static Optional<Specialty> parseSpecialty(String str)
+    public static Optional<SpecialtyCard> parseSpecialty(String str)
     {
         try
         {
-            return Optional.of(Specialty.valueOf(str));
+            return Optional.of(SpecialtyCard.valueOf(str));
         }
         catch (IllegalArgumentException e)
         {
@@ -142,17 +146,17 @@ public final class Card
     @Override @NonNull
     public String toString()
     {
-        if (specialty.isEmpty())
+        if (specialtyCard.isEmpty())
             return type.toString() + "-" + rankStrings.get(rank - 1);
         else
-            return specialty.get().name();
+            return specialtyCard.get().name();
     }
 
     @Override
     public boolean equals(Object obj)
     {
         if (obj instanceof Card c)
-            return (type.equals(c.type) && rank == c.rank == specialty.equals(c.specialty));
+            return (type.equals(c.type) && rank == c.rank == specialtyCard.equals(c.specialtyCard));
         return false;
     }
 

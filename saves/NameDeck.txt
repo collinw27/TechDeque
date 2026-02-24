@@ -1,0 +1,15 @@
+deck edit Name
+clear
+add Fire-I 1
+add Fire-I 1
+add Grass-I 1
+add Grass-I 1
+add Grass-I 1
+add Grass-II 1
+add Grass-II 1
+add Grass-II 1
+add Grass-III 1
+add Grass-III 1
+add Grass-V 1
+add Solarbeam 1
+exit

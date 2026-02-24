@@ -107,8 +107,8 @@ public final class Practical2Tests {
                 exit
                 playerDeck --equip name
                 """, IllegalArgumentException.class),
-            Arguments.of("Valid copies", """
-                deck edit name
+            Arguments.of("Valid copies (save test)", """
+                deck edit Name
                 add Grass-V 1
                 add Solarbeam 1
                 add Fire-I 2
@@ -116,7 +116,8 @@ public final class Practical2Tests {
                 add Grass-II 3
                 add Grass-III 2
                 exit
-                playerDeck --equip name
+                deck save Name
+                playerDeck --equip Name
                 """, true),
             Arguments.of("Too many rank I", """
                 deck edit name

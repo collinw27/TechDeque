@@ -2,18 +2,14 @@ package oop.practical.techdeque.game;
 
 import net.sourceforge.argparse4j.ArgumentParsers;
 import net.sourceforge.argparse4j.impl.Arguments;
-import net.sourceforge.argparse4j.inf.Namespace;
+import oop.practical.techdeque.combat.CombatManager;
 import oop.practical.techdeque.deck.Card;
 import oop.practical.techdeque.deck.Deck;
 import oop.practical.techdeque.deck.EditableDeck;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.lang.reflect.Array;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -54,6 +50,7 @@ public final class GameManager
 
         var combat = subparsers.addParser("combat");
         combat.addArgument("--war").action(Arguments.storeTrue());
+        var testParser = subparsers.addParser("test");
 
         print("Welcome to TechDeque! Enter -h for help.");
         return Input.loop(parser, args -> switch (args.getString("command")) {
@@ -68,6 +65,7 @@ public final class GameManager
             case "playerDeck" -> playerDeck(Optional.ofNullable(args.getString("equip")), args.get("cards"));
             case "enemyDeck" -> enemyDeck(Optional.ofNullable(args.getString("equip")), args.get("cards"));
             case "combat" -> combat(args.getBoolean("war"));
+            case "test" -> testCombat();
             default -> throw new AssertionError(args.getString("command"));
         });
     }
@@ -117,7 +115,7 @@ public final class GameManager
 
         else
         {
-            Optional<Card.Specialty> specialty = Card.parseSpecialty(spec);
+            Optional<Card.SpecialtyCard> specialty = Card.parseSpecialty(spec);
             if (specialty.isEmpty())
                 throw new IllegalArgumentException("Invalid card: " + spec);
             return new Card(specialty.get());
@@ -233,8 +231,11 @@ public final class GameManager
     {
         try
         {
+            String fileName = name;
+            if (!(name.equals("Grass") || name.equals("Water") || name.equals("Fire")))
+                fileName += "Deck.txt";
             allowPrinting = false;
-            List<Object> result = Save.load(this, name);
+            List<Object> result = Save.load(this, fileName);
             allowPrinting = true;
             for (Object o : result)
             {
@@ -264,7 +265,10 @@ public final class GameManager
 
         try
         {
-            Save.save(name + "Deck.txt", fileBody);
+            String fileName = name;
+            if (!(name.equals("Grass") || name.equals("Water") || name.equals("Fire")))
+                fileName += "Deck.txt";
+            Save.save(fileName, fileBody);
             return true;
         }
         catch (IOException e)
@@ -286,9 +290,11 @@ public final class GameManager
     }
 
     // Used by both player and enemy for deck validation
+    // Note that validation is only performed if using --equip
 
     private EditableDeck equipDeck(Optional<String> equip, List<String> cards)
     {
+
         EditableDeck deck = new EditableDeck();
         if (equip.isPresent())
         {
@@ -297,6 +303,7 @@ public final class GameManager
             if (!savedDecks.containsKey(equip.get()))
                 throw new IllegalArgumentException("Invalid deck: " + equip.get());
             deck = savedDecks.get(equip.get());
+            deck.validate();
         }
         else
         {
@@ -306,12 +313,21 @@ public final class GameManager
             }
         }
 
-        deck.validate();
         return deck;
     }
 
     private Object combat(boolean war)
     {
-        throw new UnsupportedOperationException("TODO");
+        CombatManager combatManager = new CombatManager(currentDeck.buildDeck(), enemyDeck.buildDeck(), war);
+        return combatManager.start();
+    }
+
+    private Object testCombat()
+    {
+        deckLoad("Water");
+        deckLoad("Fire");
+        playerDeck(Optional.of("Water"), new ArrayList<>());
+        enemyDeck(Optional.of("Fire"), new ArrayList<>());
+        return combat(true);
     }
 }

@@ -3,10 +3,7 @@ package oop.practical.techdeque.deck;
 // This class is used for editing decks while not in combat
 // This is because a deck shouldn't be edited while it's in use
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public class EditableDeck
 {
@@ -36,7 +33,9 @@ public class EditableDeck
 
     public Deck buildDeck()
     {
-        return new Deck(cards);
+        return new Deck(new ArrayList<>(cards.stream().sorted(
+            Comparator.comparing(Card::toString)
+        ).toList()));
     }
 
     public int getSize()
