@@ -1,0 +1,4 @@
+deck edit Name
+clear
+add Grass-IV 1
+exit

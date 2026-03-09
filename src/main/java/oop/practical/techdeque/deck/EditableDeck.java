@@ -2,6 +2,7 @@ package oop.practical.techdeque.deck;
 
 // This class is used for editing decks while not in combat
 // This is because a deck shouldn't be edited while it's in use
+// Once editing is finished, buildDeck() generates a combat-usable Deck
 
 import java.util.*;
 
@@ -9,19 +10,45 @@ public class EditableDeck
 {
     private ArrayList<Card> cards = new ArrayList<>();
 
-    public int addCard(Card card, int quantity)
+    public EditableDeck() {}
+    public EditableDeck(ArrayList<Card> cards)
     {
+        this.cards = cards;
+    }
+
+    public int addCard(Card card, int quantity, boolean validate)
+    {
+        // Performs a rudimentary validation that only checks max of this card
+
+        int cardTotal = (int)cards.stream().filter(c -> c.equals(card)).count() + quantity;
+        if (validate)
+        {
+            if (card.rank() <= 2 && cardTotal > 3)
+                throw new IllegalArgumentException("Too many copies of %s (%s > 3).".formatted(card, cardTotal));
+            else if (card.rank() > 2 && card.rank() <= 4 && cardTotal > 2)
+                throw new IllegalArgumentException("Too many copies of %s (%s > 2).".formatted(card, cardTotal));
+            else if (card.rank() == 5 && cardTotal > 1)
+                throw new IllegalArgumentException("Too many copies of %s (%s > 1).".formatted(card, cardTotal));
+        }
+
+        // If validated, add the cards
+
         for (int i = 0; i < quantity; i++)
+        {
+            cardTotal++;
             cards.add(card);
+        }
         return quantity;
     }
 
     public int removeCard(Card card, int quantity)
     {
-        int totalRemoved = 0;
-        while (totalRemoved < quantity && cards.remove(card))
-            totalRemoved++;
-        return totalRemoved;
+        for (int i = 0; i < quantity; i++)
+        {
+            if (!cards.remove(card))
+                throw new IllegalArgumentException("Attempted to remove nonexistent card.");
+        }
+        return quantity;
     }
 
     public int clear()
@@ -33,9 +60,12 @@ public class EditableDeck
 
     public Deck buildDeck()
     {
-        return new Deck(new ArrayList<>(cards.stream().sorted(
-            Comparator.comparing(Card::toString)
-        ).toList()));
+        return new Deck(new ArrayList<>(cards));
+    }
+
+    public EditableDeck duplicate()
+    {
+        return new EditableDeck(new ArrayList<>(cards));
     }
 
     public int getSize()
@@ -43,9 +73,9 @@ public class EditableDeck
         return cards.size();
     }
 
-    public List<String> getStringList()
+    public void sort()
     {
-        return cards.stream().map(Card::toString).sorted().toList();
+        cards.sort(Comparator.comparing(Card::toString));
     }
 
     // It seems more reasonable to perform deck validation within the deck itself,
@@ -85,19 +115,30 @@ public class EditableDeck
         }
 
         // Ensure half of the deck is of the correct type
+        // Also ensure half is only basic cards
 
         Card.Type finalDeckType = deckType;
         int typedCards = (int) cards.stream().filter(c -> c.type() == finalDeckType).count();
+        int basicCards = (int) cards.stream().filter(c -> (c.specialty().isEmpty())).count();
         int halfDeckSize = (int) Math.ceil(cards.size() / 2.0);
         if (typedCards < halfDeckSize)
             throw new IllegalArgumentException("Deck has too few cards of type %s (%s < %s).".formatted(
                 deckType.name(), typedCards, halfDeckSize
             ));
+        if (basicCards < halfDeckSize)
+            throw new IllegalArgumentException("Deck has too few basic cards (%s < %s).".formatted(
+                basicCards, halfDeckSize
+            ));
+    }
+
+    public List<String> getStringList()
+    {
+        return cards.stream().map(Card::toString).toList();
     }
 
     @Override
     public String toString()
     {
-        return cards.stream().map(Card::toString).sorted().toList().toString();
+        return cards.stream().map(Card::toString).toList().toString();
     }
 }

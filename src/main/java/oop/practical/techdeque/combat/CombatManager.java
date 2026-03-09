@@ -115,8 +115,8 @@ public final class CombatManager
 
             if (!enemyChoices.isEmpty())
             {
-                int highestRank = 1;
-                enemyCard = Optional.of(enemyChoices.get(0));
+                enemyCard = Optional.of(enemyChoices.getFirst());
+                int highestRank = enemyCard.get().rank();
                 for (int i = 1; i < enemyChoices.size(); i++)
                 {
                     if (enemyChoices.get(i).rank() > highestRank)
@@ -162,10 +162,10 @@ public final class CombatManager
         int damage = 0;
         Entity target = Entity.NONE;
 
-        // Both reshuffled: 1 damage each
-
         do
         {
+            // Both reshuffled: 1 damage each
+
             if (enemyChoice.isEmpty() && playerChoice.isEmpty())
             {
                 damage = 1;
@@ -174,17 +174,24 @@ public final class CombatManager
             }
 
             // One entity reshuffled: 1 + RANK damage
+            // Doesn't apply if other entity played a shield
 
             if (enemyChoice.isEmpty())
             {
-                damage = 1 + playerChoice.get().rank();
                 target = Entity.ENEMY;
+                damage = 1 + playerChoice.get().rank();
+                Optional<Card.Specialty> specialty = playerChoice.get().specialty();
+                if (specialty.isPresent() && specialty.get().equals(Card.Specialty.SHIELD))
+                    damage = 0;
                 break;
             }
             else if (playerChoice.isEmpty())
             {
-                damage = 1 + enemyChoice.get().rank();
                 target = Entity.PLAYER;
+                damage = 1 + enemyChoice.get().rank();
+                Optional<Card.Specialty> specialty = enemyChoice.get().specialty();
+                if (specialty.isPresent() && specialty.get().equals(Card.Specialty.SHIELD))
+                    damage = 0;
                 break;
             }
 
@@ -202,12 +209,12 @@ public final class CombatManager
             if (typeDifference != 0)
             {
                 target = (typeDifference > 0) ? Entity.ENEMY : Entity.PLAYER;
-                damage = (3 + abs(rankDifference));
+                damage = 3 + abs(rankDifference);
             }
             else if (rankDifference != 0)
             {
                 target = (rankDifference > 0) ? Entity.ENEMY : Entity.PLAYER;
-                damage = rankDifference;
+                damage = abs(rankDifference);
             }
             else
             {
@@ -216,7 +223,7 @@ public final class CombatManager
             }
 
             // Now that targets have been decided, work out if specialty cards
-            // cancel out any behavior
+            // cancel out or add any behavior
 
             Card actorCard = (target == Entity.ENEMY) ? playerCard : enemyCard;
             Card targetCard = (target == Entity.PLAYER) ? playerCard : enemyCard;
@@ -238,9 +245,9 @@ public final class CombatManager
 
                 if (actorSpecialty.isPresent() && actorSpecialty.get().equals(Card.Specialty.SPEAR))
                 {
-                    damage = 1;
+                    damage = 1 + abs(rankDifference);
                     if (typeDifference != 0)
-                        damage += 3 + abs(rankDifference);
+                        damage += 3;
                 }
             }
             if (actorSpecialty.isPresent() && actorSpecialty.get().equals(Card.Specialty.SHIELD))
@@ -254,6 +261,8 @@ public final class CombatManager
                 if (targetSpecialty.isPresent() && targetSpecialty.get().equals(Card.Specialty.SPEAR))
                 {
                     damage = 1;
+                    if (typeDifference == 0)
+                        damage += abs(rankDifference);
                     target = target.opponent();
                 }
             }
@@ -263,12 +272,18 @@ public final class CombatManager
 
                 if (typeDifference != 0 && targetCard.rank() <= 2)
                     damage += 1;
+
+                // Same-type ultimate attack (also applies against shield)
+
+                else if (typeDifference == 0)
+                    damage = abs(rankDifference);
             }
             if (targetSpecialty.isPresent() && targetSpecialty.get().equals(Card.Specialty.ULTIMATE))
             {
-                // Ultimate negation (priority over offensive ultimate card)
+                // Ultimate negation if rank <= 2
 
-                damage = 0;
+                if (actorCard.rank() <= 2)
+                    damage = 0;
             }
         }
         while (false);

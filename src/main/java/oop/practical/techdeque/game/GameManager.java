@@ -16,7 +16,7 @@ import java.util.regex.Pattern;
 public final class GameManager
 {
     HashMap<String, EditableDeck> savedDecks = new HashMap<>();
-    EditableDeck currentDeck = new EditableDeck();
+    EditableDeck playerDeck = new EditableDeck();
     EditableDeck enemyDeck = new EditableDeck();
     boolean allowPrinting = true;
 
@@ -50,7 +50,8 @@ public final class GameManager
 
         var combat = subparsers.addParser("combat");
         combat.addArgument("--war").action(Arguments.storeTrue());
-        var testParser = subparsers.addParser("test");
+        subparsers.addParser("test");
+        subparsers.addParser("exit");
 
         print("Welcome to TechDeque! Enter -h for help.");
         return Input.loop(parser, args -> switch (args.getString("command")) {
@@ -66,6 +67,7 @@ public final class GameManager
             case "enemyDeck" -> enemyDeck(Optional.ofNullable(args.getString("equip")), args.get("cards"));
             case "combat" -> combat(args.getBoolean("war"));
             case "test" -> testCombat();
+            case "exit" -> null;
             default -> throw new AssertionError(args.getString("command"));
         });
     }
@@ -73,7 +75,7 @@ public final class GameManager
     private Card card(String spec)
     {
         String pattern1 = "([A-Z][a-z]*)-([IV]+)";
-        String pattern2 = "([a-z]+)([0-9])";
+        String pattern2 = "([A-Za-z]+)([0-9])";
         Matcher matcher = Pattern.compile(pattern1).matcher(spec);
         Matcher bonusMatcher = Pattern.compile(pattern2).matcher(spec);
 
@@ -133,21 +135,11 @@ public final class GameManager
             System.out.println(str);
     }
 
-    private Deck generateDeck(List<String> cards)
-    {
-        ArrayList<Card> cardList = new ArrayList<>();
-        for (String card : cards)
-        {
-            cardList.add(card(card));
-        }
-        return new Deck(cardList);
-    }
-
     private Object deckView(Optional<String> name)
     {
         EditableDeck selectedDeck;
         if (name.isEmpty())
-            selectedDeck = currentDeck;
+            selectedDeck = playerDeck;
         else if (savedDecks.containsKey(name.get()))
             selectedDeck = savedDecks.get(name.get());
         else
@@ -165,14 +157,17 @@ public final class GameManager
 
         if (name.isEmpty())
         {
-            selectedDeck = currentDeck;
+            selectedDeck = playerDeck;
             print("Now editing current deck.");
         }
 
         // Otherwise, retrieve named deck, creating it if necessary
+        // Name must be in PascalCase
 
         else
         {
+            if (!name.get().matches("[A-Z][A-Za-z]*"))
+                throw new IllegalArgumentException("Deck name must be capitalized and alphabetic.");
             if (!savedDecks.containsKey(name.get()))
                 savedDecks.put(name.get(), new EditableDeck());
             selectedDeck = savedDecks.get(name.get());
@@ -207,12 +202,17 @@ public final class GameManager
         return deck.clear();
     }
 
+    // 0 and negative indices are also valid, simply calls a different method
+
     private int deckEditAdd(EditableDeck deck, String cardString, int copies)
     {
         Card card = card(cardString);
-        if (copies <= 0)
-            throw new IllegalArgumentException("Invalid quantity");
-        int result = deck.addCard(card, copies);
+        int result = 0;
+        if (copies > 0)
+            result = deck.addCard(card, copies, true);
+        else if (copies < 0)
+            result = -deck.removeCard(card, -copies);
+        deck.sort();
         print("Added %s cop%s of %s.".formatted(result, result == 1 ? "y":"ies", card));
         return result;
     }
@@ -220,20 +220,25 @@ public final class GameManager
     private int deckEditRemove(EditableDeck deck, String cardString, int copies)
     {
         Card card = card(cardString);
-        if (copies <= 0)
-            throw new IllegalArgumentException("Invalid quantity");
-        int result = deck.removeCard(card, copies);
+        int result = 0;
+        if (copies > 0)
+            result = deck.removeCard(card, copies);
+        else if (copies < 0)
+            result = -deck.addCard(card, -copies, true);
         print("Removed %s cop%s of %s.".formatted(result, result == 1 ? "y":"ies", card));
         return result;
     }
 
-    private Object deckLoad(String name)
+    private Object deckLoad(String fileName)
     {
+        String deckName = fileName;
+        if (fileName.matches("[A-Za-z]*\\.txt"))
+            deckName = fileName.substring(0, fileName.length() - 4);
+        else if (!fileName.matches("Fire|Water|Grass"))
+            throw new IllegalArgumentException("Invalid deck name.");
+
         try
         {
-            String fileName = name;
-            if (!(name.equals("Grass") || name.equals("Water") || name.equals("Fire")))
-                fileName += "Deck.txt";
             allowPrinting = false;
             List<Object> result = Save.load(this, fileName);
             allowPrinting = true;
@@ -242,8 +247,8 @@ public final class GameManager
                 if (o instanceof Exception)
                     throw new IllegalArgumentException(((Exception) o).getMessage());
             }
-            print("Loaded deck \"%s\".".formatted(name));
-            return savedDecks.get(name);
+            print("Loaded deck \"%s\".".formatted(fileName));
+            return savedDecks.get(deckName);
         }
         catch (IOException e)
         {
@@ -251,13 +256,17 @@ public final class GameManager
         }
     }
 
-    private boolean deckSave(String name)
+    private boolean deckSave(String fileName)
     {
-        if (!savedDecks.containsKey(name))
-            throw new IllegalArgumentException("Invalid deck: " + name);
-        EditableDeck selectedDeck = savedDecks.get(name);
+        String deckName = fileName.substring(0, fileName.length() - 4);
+        if (!fileName.matches("[A-Za-z]*\\.txt"))
+            throw new IllegalArgumentException("Invalid deck name.");
 
-        String fileBody = "deck edit %s\nclear\n".formatted(name);
+        if (!savedDecks.containsKey(deckName))
+            throw new IllegalArgumentException("Invalid deck: " + fileName);
+        EditableDeck selectedDeck = savedDecks.get(deckName);
+
+        String fileBody = "deck edit %s\nclear\n".formatted(deckName);
         fileBody += String.join("\n", selectedDeck.getStringList().stream().map(
             s -> "add %s 1".formatted(s)).toList()
         );
@@ -265,9 +274,6 @@ public final class GameManager
 
         try
         {
-            String fileName = name;
-            if (!(name.equals("Grass") || name.equals("Water") || name.equals("Fire")))
-                fileName += "Deck.txt";
             Save.save(fileName, fileBody);
             return true;
         }
@@ -279,8 +285,8 @@ public final class GameManager
 
     private Object playerDeck(Optional<String> equip, List<String> cards)
     {
-        currentDeck = equipDeck(equip, cards);
-        return currentDeck;
+        playerDeck = equipDeck(equip, cards);
+        return playerDeck;
     }
 
     private Object enemyDeck(Optional<String> equip, List<String> cards)
@@ -302,15 +308,15 @@ public final class GameManager
                 throw new IllegalArgumentException("Both card list and --equip provided");
             if (!savedDecks.containsKey(equip.get()))
                 throw new IllegalArgumentException("Invalid deck: " + equip.get());
-            deck = savedDecks.get(equip.get());
+            deck = savedDecks.get(equip.get()).duplicate();
             deck.validate();
         }
         else
         {
+            // # of copies is NOT validated here!
+
             for (String card : cards)
-            {
-                deck.addCard(card(card), 1);
-            }
+                deck.addCard(card(card), 1, false);
         }
 
         return deck;
@@ -318,7 +324,7 @@ public final class GameManager
 
     private Object combat(boolean war)
     {
-        CombatManager combatManager = new CombatManager(currentDeck.buildDeck(), enemyDeck.buildDeck(), war);
+        CombatManager combatManager = new CombatManager(playerDeck.buildDeck(), enemyDeck.buildDeck(), war);
         return combatManager.start();
     }
 
@@ -328,6 +334,6 @@ public final class GameManager
         deckLoad("Fire");
         playerDeck(Optional.of("Water"), new ArrayList<>());
         enemyDeck(Optional.of("Fire"), new ArrayList<>());
-        return combat(true);
+        return combat(false);
     }
 }

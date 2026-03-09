@@ -76,12 +76,16 @@ public final class Practical1Tests {
                 enemyDeck Water-I
                 combat --war
                 """, "3-0"),
-            Arguments.of("Rank Win", """
+                Arguments.of("Rank Win", """
                 playerDeck Grass-II
                 enemyDeck Grass-I
                 combat --war
-                """, "1-0")
-                //TODO: Test coverage
+                """, "1-0"),
+                Arguments.of("Enemy Win", """
+                playerDeck Grass-I
+                enemyDeck Grass-II
+                combat --war
+                """, "0-1")
         );
     }
 
@@ -98,7 +102,45 @@ public final class Practical1Tests {
                 playerDeck Grass-II
                 enemyDeck Grass-I
                 combat --war
-                """, "1-0")
+                """, "1-0"),
+                Arguments.of("Player overkill", """
+                playerDeck Water-I Water-I Water-I Water-I Water-I Water-I
+                enemyDeck Grass-V Grass-V Grass-V Grass-V Grass-V Grass-V
+                combat
+                1
+                1
+                """, "0-10"),
+                Arguments.of("Enemy overkill", """
+                playerDeck Grass-V Grass-V Grass-V Grass-V Grass-V Grass-V
+                enemyDeck Water-I Water-I Water-I Water-I Water-I Water-I
+                combat
+                1
+                1
+                """, "10-0"),
+                Arguments.of("Enemy reshuffle", """
+                playerDeck Water-I Water-I Water-I Water-I Water-I Water-I Grass-II Grass-II Grass-II
+                enemyDeck Grass-V Grass-V Grass-V
+                combat
+                1
+                1
+                1
+                """, "0-8"),
+                Arguments.of("Both KO", """
+                playerDeck Grass-V Grass-V Grass-V Grass-V Grass-V Grass-V Water-I Water-I Water-I Grass-III Grass-III Grass-III
+                enemyDeck Water-I Water-I Water-I Grass-III Grass-III Grass-III Grass-V Grass-V Grass-V Grass-V Grass-V Grass-V
+                combat
+                1
+                1
+                1
+                1
+                """, "0-0"),
+                Arguments.of("Order precedence 1", """
+                playerDeck Grass-V Grass-V Grass-V Grass-II Grass-II Grass-II
+                enemyDeck Water-I Water-I Water-I Water-II Fire-I Fire-II
+                combat
+                1
+                1
+                """, "10-0")
         );
     }
 

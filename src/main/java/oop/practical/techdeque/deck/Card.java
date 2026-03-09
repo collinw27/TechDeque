@@ -39,6 +39,11 @@ public final class Card
         }
     }
 
+    // `Specialty` is used to define common behavior shared between
+    // specialty cards of the same type
+    // `SpecialtyCard` defines valid combinations of Type/Specialty,
+    // while also naming each combination for input/output
+
     public enum Specialty
     {
         SHIELD(1),
@@ -111,7 +116,7 @@ public final class Card
     {
         try
         {
-            str = str.isEmpty() ? "" : (str.substring(0, 1).toUpperCase()) + str.substring(1);
+            str = str.isEmpty() ? "" : (str.substring(0, 1).toUpperCase()) + str.substring(1).toLowerCase();
             return Optional.of(Type.valueOf(str));
         }
         catch (IllegalArgumentException e)
@@ -143,23 +148,6 @@ public final class Card
         return (rank >= 1 && rank <= rankStrings.size());
     }
 
-    @Override @NonNull
-    public String toString()
-    {
-        if (specialtyCard.isEmpty())
-            return type.toString() + "-" + rankStrings.get(rank - 1);
-        else
-            return specialtyCard.get().name();
-    }
-
-    @Override
-    public boolean equals(Object obj)
-    {
-        if (obj instanceof Card c)
-            return (type.equals(c.type) && rank == c.rank == specialtyCard.equals(c.specialtyCard));
-        return false;
-    }
-
     // Returns a positive number if type(this) > type(other)
 
     public int compareType(Card other)
@@ -177,5 +165,24 @@ public final class Card
     public int compareRank(Card other)
     {
         return rank - other.rank;
+    }
+
+    // Custom Object behavior
+
+    @Override @NonNull
+    public String toString()
+    {
+        if (specialtyCard.isEmpty())
+            return type.toString() + "-" + rankStrings.get(rank - 1);
+        else
+            return specialtyCard.get().name();
+    }
+
+    @Override
+    public boolean equals(Object obj)
+    {
+        if (obj instanceof Card c)
+            return (type.equals(c.type) && (rank == c.rank) && specialtyCard.equals(c.specialtyCard));
+        return false;
     }
 }

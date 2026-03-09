@@ -74,7 +74,77 @@ public final class Practical2Tests {
                     "Water-I", "Water-I",
                     "Water-II",
                     "Water-III"
-                ).toString())
+                ).toString()),
+            Arguments.of("Add zero", """
+            deck edit
+            add Grass-I 0
+            exit
+            deck view
+            """, "[]"),
+            Arguments.of("Remove zero", """
+            deck edit
+            remove Grass-I 0
+            exit
+            deck view
+            """, "[]"),
+            Arguments.of("Remove nonexistent", """
+            deck edit
+            remove Grass-I 1
+            exit
+            deck view
+            """, "[]"),
+            Arguments.of("Add negative", """
+            deck edit
+            add Grass-I 3
+            add Grass-I -2
+            exit
+            deck view
+            """, "[Grass-I]"),
+            Arguments.of("Remove negative", """
+            deck edit
+            remove Grass-I -2
+            exit
+            deck view
+            """, "[Grass-I, Grass-I]"),
+            Arguments.of("Modify current", """
+            deck edit Name
+            add Grass-I 3
+            add Grass-II 3
+            add Grass-III 2
+            add Grass-IV 2
+            add Grass-V 1
+            exit
+            playerDeck --equip Name
+            deck edit Name
+            remove Grass-V
+            exit
+            deck view
+            """, "[Grass-I, Grass-I, Grass-I, Grass-II, Grass-II, Grass-II, Grass-III, Grass-III, Grass-IV, Grass-IV, Grass-V]"),
+            Arguments.of("Equip combat", """
+            deck edit Name
+            add Grass-I 3
+            add Grass-II 3
+            add Grass-III 2
+            add Grass-IV 2
+            add Grass-V 1
+            exit
+            playerDeck --equip Name
+            enemyDeck Grass-II Grass-II Grass-II Grass-III Grass-III Grass-III Grass-IV Grass-IV Grass-V Grass-V Grass-V
+            combat --war
+            """, "0-10"),
+            Arguments.of("Multiple above max copies", """
+            deck edit
+            add Grass-V 1
+            remove Grass-V 2
+            """, false),
+            Arguments.of("Multiple above max removal", """
+            deck edit
+            add Grass-I 3
+            remove Grass-I
+            remove Grass-I
+            remove Grass-I
+            remove Grass-I
+            """, false)
         );
     }
 
@@ -92,13 +162,13 @@ public final class Practical2Tests {
                 playerDeck --equip Grass
                 """, true),
             Arguments.of("Minimum Size", """
-                deck edit name
+                deck edit Name
                 add Grass-V 1
                 exit
                 playerDeck --equip name
                 """, IllegalArgumentException.class),
             Arguments.of("Type Balance", """
-                deck edit name
+                deck edit Name
                 add Grass-V 1
                 add Solarbeam 1
                 add Fire-I 3
@@ -107,20 +177,8 @@ public final class Practical2Tests {
                 exit
                 playerDeck --equip name
                 """, IllegalArgumentException.class),
-            Arguments.of("Valid copies (save test)", """
-                deck edit Name
-                add Grass-V 1
-                add Solarbeam 1
-                add Fire-I 2
-                add Grass-I 3
-                add Grass-II 3
-                add Grass-III 2
-                exit
-                deck save Name
-                playerDeck --equip Name
-                """, true),
             Arguments.of("Too many rank I", """
-                deck edit name
+                deck edit Name
                 add Grass-V 1
                 add Solarbeam 1
                 add Fire-I 2
@@ -131,7 +189,7 @@ public final class Practical2Tests {
                 playerDeck --equip name
                 """, IllegalArgumentException.class),
             Arguments.of("Too many rank III", """
-                deck edit name
+                deck edit Name
                 add Grass-V 1
                 add Solarbeam 1
                 add Fire-I 2
@@ -142,7 +200,7 @@ public final class Practical2Tests {
                 playerDeck --equip name
                 """, IllegalArgumentException.class),
             Arguments.of("Too many rank V", """
-                deck edit name
+                deck edit Name
                 add Grass-V 1
                 add Solarbeam 2
                 add Fire-I 2
@@ -153,7 +211,7 @@ public final class Practical2Tests {
                 playerDeck --equip name
                 """, IllegalArgumentException.class),
             Arguments.of("Invalid rank V type", """
-                deck edit name
+                deck edit Name
                 add Grass-V 1
                 add Tempest 1
                 add Fire-I 2
@@ -162,6 +220,116 @@ public final class Practical2Tests {
                 add Grass-III 2
                 exit
                 playerDeck --equip name
+                """, IllegalArgumentException.class),
+            Arguments.of("playerDeck multiple", """
+                playerDeck Grass-IV Water-II Fire-III
+                """, "[Grass-IV, Water-II, Fire-III]"),
+            Arguments.of("enemyDeck", """
+                enemyDeck Grass-IV Water-II Fire-III
+                """, "[Grass-IV, Water-II, Fire-III]")
+        );
+    }
+
+    @ParameterizedTest
+    @MethodSource
+    public void testMiscTest(String name, String commands, Object expected)
+    {
+        test(commands, expected);
+    }
+
+    public static Stream<Arguments> testMiscTest()
+    {
+        return Stream.of(
+            Arguments.of("War test", """
+                playerDeck Grass-IV Water-II Fire-III
+                enemyDeck Water-I Grass-I Fire-I
+                combat --war
+                """, "8-4"),
+            Arguments.of("Regular test", """
+                playerDeck Grass-IV Water-II Fire-III
+                enemyDeck Water-I Fire-I Grass-I Water-I Fire-I Grass-I Water-I Fire-I Grass-II
+                combat
+                1
+                3
+                """, true),
+            Arguments.of("Reshuffle (Both)", """
+                playerDeck Grass-III Grass-III Grass-III Grass-II Grass-II Grass-II
+                enemyDeck Grass-I Grass-I Grass-I Grass-I Grass-I Grass-I
+                combat
+                1
+                1
+                1
+                1
+                1
+                """, true),
+            Arguments.of("Player selection (3 cards)", """
+                playerDeck Grass-V Grass-V Grass-V Water-I Water-I Grass-I
+                enemyDeck Water-I Water-I Water-I Water-I Water-I Water-I
+                combat
+                1
+                3
+                """, true),
+            Arguments.of("Enemy selection (Rank)", """
+                playerDeck Grass-V Grass-V Grass-V Grass-II Grass-II Grass-II
+                enemyDeck Water-I Water-I Water-I Fire-I Water-II Fire-I
+                combat
+                1
+                1
+                """, true),
+            Arguments.of("Enemy selection (Order)", """
+                playerDeck Grass-V Grass-V Grass-V Grass-II Grass-II Grass-II
+                enemyDeck Water-I Water-I Water-I Fire-I Water-II Fire-II
+                combat
+                1
+                1
+                """, true),
+            Arguments.of("Overkill", """
+                playerDeck Grass-V Grass-V Grass-V Grass-V Grass-V Grass-V
+                enemyDeck Water-I Water-I Water-I Water-I Water-I Water-I
+                combat
+                1
+                1
+                """, true),
+            Arguments.of("Custom save", """
+                deck edit Name
+                add Grass-IV
+                exit
+                deck save Name.txt
+                deck edit Name
+                clear
+                add Fire-I
+                exit
+                deck load Name.txt
+                deck view Name
+                """, true),
+            Arguments.of("Exactly half basic cards", """
+                deck edit Name
+                add Grass-I 3
+                add Grass-II 3
+                add Grass-III 2
+                add Grass-IV 2
+                add Grass-V 1
+                add FireShield 3
+                add GrassShield 3
+                add WaterShield 3
+                add GrassSpear 2
+                exit
+                playerDeck --equip Name
+                """, true),
+                Arguments.of("Below half basic cards", """
+                deck edit Name
+                add Grass-I 3
+                add Grass-II 3
+                add Grass-III 2
+                add Grass-IV 2
+                add Grass-V 1
+                add FireShield 3
+                add GrassShield 3
+                add WaterShield 3
+                add GrassSpear 2
+                add Solarbeam 1
+                exit
+                playerDeck --equip Name
                 """, IllegalArgumentException.class)
         );
     }
@@ -203,7 +371,56 @@ public final class Practical2Tests {
                 playerDeck Solarbeam
                 enemyDeck Fire-II
                 combat --war
-                """, "0-0")
+                """, "0-0"),
+            Arguments.of("Shield reshuffle", """
+                playerDeck FireShield
+                combat --war
+                """, "0-0"),
+            Arguments.of("Spear shield defense break", """
+                playerDeck FireShield
+                enemyDeck FireSpear
+                combat --war
+                """, "0-3"),
+                Arguments.of("Ultimate shield attack break", """
+                playerDeck Inferno
+                enemyDeck FireShield
+                combat --war
+                """, "4-0"),
+                Arguments.of("Ultimate shield defense break", """
+                playerDeck FireShield
+                enemyDeck Inferno
+                combat --war
+                """, "0-4"),
+                Arguments.of("Ultimate shield attack disadvantage", """
+                playerDeck Tempest
+                enemyDeck GrassShield
+                combat --war
+                """, "0-0"),
+                Arguments.of("Ultimate basic rank 1", """
+                playerDeck Inferno
+                enemyDeck Fire-I
+                combat --war
+                """, "4-0"),
+                Arguments.of("Ultimate basic rank 2", """
+                playerDeck Solarbeam
+                enemyDeck Grass-II
+                combat --war
+                """, "3-0"),
+                Arguments.of("Ultimate basic rank 3", """
+                playerDeck Tempest
+                enemyDeck Water-III
+                combat --war
+                """, "2-0"),
+                Arguments.of("Ultimate disadvantage rank 2", """
+                playerDeck Solarbeam
+                enemyDeck Fire-II
+                combat --war
+                """, "0-0"),
+                Arguments.of("Ultimate disadvantage rank 3", """
+                playerDeck Tempest
+                enemyDeck Grass-III
+                combat --war
+                """, "0-5")
         );
     }
 
