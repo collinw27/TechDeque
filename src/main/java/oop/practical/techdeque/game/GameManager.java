@@ -62,7 +62,7 @@ public final class GameManager
             case "deck" -> switch (args.getString("subcommand")) {
                 case "view" -> deckView(Optional.ofNullable(args.getString("name")));
                 case "edit" -> deckEdit(Optional.ofNullable(args.getString("name")));
-                case "load" -> deckLoad(args.getString("name"));
+                case "load" -> deckLoad(args.getString("name"), true);
                 case "save" -> deckSave(args.getString("name"));
                 default -> throw new AssertionError(args.getString("subcommand"));
             };
@@ -233,7 +233,7 @@ public final class GameManager
         return result;
     }
 
-    private Object deckLoad(String fileName)
+    private Object deckLoad(String fileName, boolean logResult)
     {
         String deckName = fileName;
         if (fileName.matches("[A-Za-z]*\\.txt"))
@@ -251,7 +251,8 @@ public final class GameManager
                 if (o instanceof Exception)
                     throw new IllegalArgumentException(((Exception) o).getMessage());
             }
-            print("Loaded deck \"%s\".".formatted(fileName));
+            if (logResult)
+                print("Loaded deck \"%s\".".formatted(fileName));
             return savedDecks.get(deckName);
         }
         catch (IOException e)
@@ -336,14 +337,21 @@ public final class GameManager
 
     private Object play(boolean war)
     {
-        WorldManager worldManager = new WorldManager(playerDeck.buildDeck(), enemyDeck.buildDeck(), war);
+        deckLoad("Fire", false);
+        deckLoad("Grass", false);
+        deckLoad("Water", false);
+        WorldManager worldManager = new WorldManager(playerDeck.buildDeck(), new HashMap<>(Map.of(
+            "Fire", savedDecks.get("Fire").buildDeck(),
+            "Grass", savedDecks.get("Grass").buildDeck(),
+            "Water", savedDecks.get("Water").buildDeck()
+        )), war);
         return worldManager.start();
     }
 
     private Object testCombat()
     {
-        deckLoad("Water");
-        deckLoad("Fire");
+        deckLoad("Water", true);
+        deckLoad("Fire", true);
         playerDeck(Optional.of("Water"), new ArrayList<>());
         enemyDeck(Optional.of("Fire"), new ArrayList<>());
         return combat(false);

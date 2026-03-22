@@ -4,10 +4,7 @@ import net.sourceforge.argparse4j.ArgumentParsers;
 import oop.practical.techdeque.combat.CombatManager;
 import oop.practical.techdeque.deck.Deck;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 
 import static java.lang.Math.max;
 import static java.lang.Math.min;
@@ -17,7 +14,7 @@ public final class WorldManager
     private record Enemy (int x, int y, String enemyType, int health) {}
 
     private Deck playerDeck;
-    private Deck enemyDeck;
+    private HashMap<String, Deck> enemyDecks;
     private boolean warMode;
 
     private int playerX, playerY = 0;
@@ -29,10 +26,16 @@ public final class WorldManager
 
     private boolean didExit = false;
 
-    public WorldManager(Deck playerDeck, Deck enemyDeck, boolean warMode)
+    // Currently, only the GameManager has the ability to load decks
+    // Since enemies need to access the builtin decks, I see 3 reasonable options:
+    // 1) pass in a reference to GameManager to this class
+    // 2) pass in a reference to an external object solely responsible for loading decks
+    // 3) just pass in the decks to this constructor (seems easiest to me)
+
+    public WorldManager(Deck playerDeck, HashMap<String, Deck> enemyDecks, boolean warMode)
     {
         this.playerDeck = playerDeck.copy();
-        this.enemyDeck = enemyDeck.copy();
+        this.enemyDecks = new HashMap<>(enemyDecks);
         this.warMode = warMode;
 
         remaningEnemies.add(new Enemy(2, 0, "Fire", 10));
@@ -68,12 +71,14 @@ public final class WorldManager
         int oldY = playerY;
         switch (direction)
         {
-            case "n" -> playerY = max(playerY - 1, 0);
-            case "e" -> playerX = min(playerX + 1, 2);
-            case "s" -> playerY = min(playerY + 1, 2);
-            case "w" -> playerX = max(playerX - 1, 0);
+            case "n" -> playerY -= 1;
+            case "e" -> playerX += 1;
+            case "s" -> playerY += 1;
+            case "w" -> playerX -= 1;
             default -> throw new AssertionError(direction);
         }
+        if (playerX < 0 || playerX > 2 || playerY < 0 || playerY > 2)
+            throw new IllegalArgumentException("Invalid player position");
 
         // Modify list outside of for loop to avoid weirdness
 
@@ -86,21 +91,30 @@ public final class WorldManager
         if (encounteredEnemy.isPresent())
         {
             Enemy enemy = encounteredEnemy.get();
-            CombatManager combatManager = new CombatManager(playerDeck, enemyDeck, warMode
-                    ? CombatManager.Mode.WAR_HEALTH
-                    : CombatManager.Mode.NORMAL
-            );
-            combatManager.setDefaultHP(playerHP, enemy.health());
-            var results = combatManager.start();
+            System.out.printf("You encountered a %s enemy!\n", enemy.enemyType);
 
+            // Load predefined enemy deck
+
+            if (!enemyDecks.containsKey(enemy.enemyType))
+                throw new AssertionError("Did not define deck " + enemy.enemyType);
+            Deck enemyDeck = enemyDecks.get(enemy.enemyType).copy();
+
+            // Run combat and modify state after
             // Assumed that player must have >0 HP to win (i.e. cannot draw)
             // Otherwise, they would automatically lose the next battle
 
+            CombatManager combatManager = new CombatManager(playerDeck, enemyDeck, warMode
+                ? CombatManager.Mode.WAR_HEALTH
+                : CombatManager.Mode.NORMAL
+            );
+            combatManager.setDefaultHP(playerHP, enemy.health());
+            var results = combatManager.start();
             if (results.playerWon())
             {
                 playerHP = results.playerResult();
                 remaningEnemies.remove(enemy);
                 playerWins += 1;
+                System.out.printf("You advanced to (%s, %s).\n", playerX, playerY);
             }
             else
             {
@@ -108,7 +122,12 @@ public final class WorldManager
                 playerY = oldY;
                 playerHP = 20;
                 playerLosses += 1;
+                System.out.printf("You remain at (%s, %s).\n", playerX, playerY);
             }
+        }
+        else
+        {
+            System.out.printf("You advanced to (%s, %s).\n", playerX, playerY);
         }
         return "(%s, %s)".formatted(playerX, playerY);
     }
@@ -122,15 +141,22 @@ public final class WorldManager
             map[enemy.x + enemy.y * 3] = enemy.enemyType.charAt(0);
         }
         map[playerX + playerY * 3] = 'P';
+
+        // There's probably a better way of doing this, but it's fine for a simple board
+
         String s = String.valueOf(map);
         String mapString = s.substring(0, 3) + '\n' + s.substring(3, 6) + '\n' + s.substring(6, 9);
         System.out.println(mapString);
         return mapString;
     }
 
+    // Workaround for Input.loop()
+
     private Object exit()
     {
         didExit = true;
+        System.out.println("Exiting and displaying results:");
+        System.out.printf("HP: %s    |    W-L: %s-%s\n", playerHP, playerWins, playerLosses);
         return null;
     }
 }
