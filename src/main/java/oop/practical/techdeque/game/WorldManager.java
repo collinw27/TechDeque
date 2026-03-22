@@ -5,7 +5,9 @@ import oop.practical.techdeque.combat.CombatManager;
 import oop.practical.techdeque.deck.Deck;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 
 import static java.lang.Math.max;
 import static java.lang.Math.min;
@@ -18,8 +20,9 @@ public final class WorldManager
     private Deck enemyDeck;
     private boolean warMode;
 
-    private int playerX, playerY;
-    private int playerHealth;
+    private int playerX, playerY = 0;
+    private int playerHP = 20;
+    private int playerWins, playerLosses = 0;
     private ArrayList<Enemy> remaningEnemies = new ArrayList<>();
 
     // Hacky workaround for detecting Input receiving null
@@ -54,7 +57,7 @@ public final class WorldManager
         });
 
         if (didExit)
-            results.add(String.valueOf(playerHealth));
+            results.add("%s (%s-%s)".formatted(playerHP, playerWins, playerLosses));
 
         return results;
     }
@@ -71,14 +74,40 @@ public final class WorldManager
             case "w" -> playerX = max(playerX - 1, 0);
             default -> throw new AssertionError(direction);
         }
+
+        // Modify list outside of for loop to avoid weirdness
+
+        Optional<Enemy> encounteredEnemy = Optional.empty();
         for (var enemy : remaningEnemies)
         {
             if (enemy.x == playerX && enemy.y == playerY)
+                encounteredEnemy = Optional.of(enemy);
+        }
+        if (encounteredEnemy.isPresent())
+        {
+            Enemy enemy = encounteredEnemy.get();
+            CombatManager combatManager = new CombatManager(playerDeck, enemyDeck, warMode
+                    ? CombatManager.Mode.WAR_HEALTH
+                    : CombatManager.Mode.NORMAL
+            );
+            combatManager.setDefaultHP(playerHP, enemy.health());
+            var results = combatManager.start();
+
+            // Assumed that player must have >0 HP to win (i.e. cannot draw)
+            // Otherwise, they would automatically lose the next battle
+
+            if (results.playerWon())
             {
-                CombatManager combatManager = new CombatManager(playerDeck, enemyDeck, warMode);
-                var result = combatManager.start();
+                playerHP = results.playerResult();
+                remaningEnemies.remove(enemy);
+                playerWins += 1;
+            }
+            else
+            {
                 playerX = oldX;
                 playerY = oldY;
+                playerHP = 20;
+                playerLosses += 1;
             }
         }
         return "(%s, %s)".formatted(playerX, playerY);
@@ -86,7 +115,17 @@ public final class WorldManager
 
     private String getMap()
     {
-        return "MAP!";
+        char[] map = new char[9];
+        Arrays.fill(map, ' ');
+        for (var enemy : remaningEnemies)
+        {
+            map[enemy.x + enemy.y * 3] = enemy.enemyType.charAt(0);
+        }
+        map[playerX + playerY * 3] = 'P';
+        String s = String.valueOf(map);
+        String mapString = s.substring(0, 3) + '\n' + s.substring(3, 6) + '\n' + s.substring(6, 9);
+        System.out.println(mapString);
+        return mapString;
     }
 
     private Object exit()

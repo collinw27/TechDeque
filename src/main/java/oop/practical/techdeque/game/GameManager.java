@@ -327,8 +327,11 @@ public final class GameManager
 
     private Object combat(boolean war)
     {
-        CombatManager combatManager = new CombatManager(playerDeck.buildDeck(), enemyDeck.buildDeck(), war);
-        return combatManager.start();
+        CombatManager combatManager = new CombatManager(playerDeck.buildDeck(), enemyDeck.buildDeck(), war
+            ? CombatManager.Mode.WAR_POINTS
+            : CombatManager.Mode.NORMAL
+        );
+        return combatManager.start().resultString();
     }
 
     private Object play(boolean war)

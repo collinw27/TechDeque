@@ -2,6 +2,7 @@ package oop.practical.techdeque.combat;
 
 import net.sourceforge.argparse4j.ArgumentParsers;
 import net.sourceforge.argparse4j.impl.Arguments;
+import net.sourceforge.argparse4j.inf.ArgumentParser;
 import oop.practical.techdeque.deck.Card;
 import oop.practical.techdeque.deck.Deck;
 import oop.practical.techdeque.game.Input;
@@ -16,14 +17,29 @@ public final class CombatManager
 {
     private Deck playerDeck;
     private Deck enemyDeck;
-    private boolean warMode;
+
+    // As it existed before, war mode implied 2 things:
+    // 1) automatic drawing & no reshuffle, 2) points instead of health
+    // However, since war mode can now be played using health,
+    // these things must be specified separately
+    // This technically means you could play normal mode with points,
+    // although no such option currently exists in the Mode enum
+
+    public enum Mode { NORMAL, WAR_POINTS, WAR_HEALTH }
+    private boolean doAutoDraw;
+    private boolean doPoints;
+    private ArgumentParser actionParser;
 
     // Entity state
-    // Called `score` for generality, but represents HP in non-war mode
+    // Called `score` for generality, but can also represent HP as well
+    // It's fine that we don't have a way of resetting these, since each
+    // instance of this class should represent its own game
 
     private int playerScore = 0;
     private int enemyScore = 0;
     private ArrayList<Card> playerHand = new ArrayList<>();
+
+    // For use later on
 
     private enum Entity {
         NONE, PLAYER, ENEMY, BOTH;
@@ -39,153 +55,189 @@ public final class CombatManager
         }
     }
 
-    public CombatManager(Deck playerDeck, Deck enemyDeck, boolean warMode)
+    // Allows the world map to get more detail about the results
+
+    public record CombatResults(
+        boolean playerWon,
+        int playerResult,
+        String resultString
+    ) {}
+
+    public CombatManager(Deck playerDeck, Deck enemyDeck, Mode gameMode)
     {
         this.playerDeck = playerDeck.copy();
         this.enemyDeck = enemyDeck.copy();
-        this.warMode = warMode;
-    }
+        this.doAutoDraw = (gameMode != Mode.NORMAL);
+        this.doPoints = (gameMode == Mode.WAR_POINTS);
 
-    public String start()
-    {
-        return (warMode ? startWar() : startNormal());
-    }
+        // HP defaults to 10, and can be modified manually
 
-    private String startWar()
-    {
-        while (true)
+        if (!doPoints)
         {
-            // Automatically draw
-
-            Optional<Card> playerCard = playerDeck.drawTop();
-            Optional<Card> enemyCard = enemyDeck.drawTop();
-
-            // Terminate if neither drew a card (deck empty)
-
-            if (playerCard.isEmpty() && enemyCard.isEmpty())
-                break;
-
-            // Play the cards against each other
-            // Abstracted to playCards() due to shared behavior with normal mode
-
-            playCards(playerCard, enemyCard);
+            playerScore = 10;
+            enemyScore = 10;
         }
 
-        System.out.printf("Final: %s-%s%n", playerScore, enemyScore);
-        return String.format("%s-%s", playerScore, enemyScore);
-    }
+        // Easier to set up parser here instead of after starting
 
-    private String startNormal()
-    {
-        var parser = ArgumentParsers.newFor("").build();
-        var subparsers = parser.addSubparsers().dest("command");
+        actionParser = ArgumentParsers.newFor("").build();
+        var subparsers = actionParser.addSubparsers().dest("command");
         var parserSelect = subparsers.addParser("select");
         parserSelect.addArgument("num").type(Integer.class).choices(Arguments.range(1, 3));
         var parserDiscard = subparsers.addParser("discard");
         parserDiscard.addArgument("num").type(Integer.class).choices(Arguments.range(1, 3));
+    }
 
-        // Both start at 10 HP
+    // Use when NOT in points mode and need to manually set HP
 
-        playerScore = 10;
-        enemyScore = 10;
+    public void setDefaultHP(int playerHP, int enemyHP)
+    {
+        if (!doPoints)
+        {
+            playerScore = playerHP;
+            enemyScore = enemyHP;
+        }
+    }
 
+    public CombatResults start()
+    {
         while (true)
         {
-            // Attempt to draw 3 cards, give player a choice
+            // Automatically draw (dependent on mode)
 
-            Optional<Card> playerCard = Optional.empty();
-            Optional<Card> enemyCard = Optional.empty();
-            playerHand.addAll(playerDeck.drawCards(3 - playerHand.size()));
-            ArrayList<Card> enemyHand = enemyDeck.drawCards(3);
+            Optional<Card> playerCard = doAutoDraw ? drawPlayerTop() : drawPlayerCard();
+            Optional<Card> enemyCard = doAutoDraw ? drawEnemyTop() : drawEnemyCard();
 
-            // Choose card 1-3
-            // Optionally discard unless there is one remaining
+            // AUTODRAW: Terminate if neither drew a card, winner has most score/HP
+            // !AUTODRAW: Reshuffle if empty
 
-            if (!playerHand.isEmpty())
+            if (doAutoDraw && playerCard.isEmpty() && enemyCard.isEmpty())
             {
-                while (true)
-                {
-                    // Print message
-
-                    System.out.print("You drew");
-                    for (int i = 0; i < playerHand.size(); i++)
-                    {
-                        System.out.printf(String.format(" %s) %s", i + 1, playerHand.get(i)));
-                    }
-                    System.out.println();
-
-                    // Use Input to validate user's choice
-                    // If out of range, error instead of reprompting
-
-                    var result = Input.prompt(parser, "select/discard (1-%s): ".formatted(playerHand.size()));
-                    if (result.getString("command").equals("select"))
-                    {
-                        int cardIndex = result.getInt("num") - 1;
-                        if (cardIndex < playerHand.size())
-                        {
-                            playerCard = Optional.of(playerHand.remove(cardIndex));
-                            break;
-                        }
-                        else
-                            throw new IllegalArgumentException("Out of range");
-                    }
-                    else if (result.getString("command").equals("discard"))
-                    {
-                        int cardIndex = result.getInt("num") - 1;
-                        if (playerHand.size() == 1)
-                            throw new IllegalArgumentException("Cannot discard only card");
-                        else if (cardIndex < playerHand.size())
-                            playerHand.remove(cardIndex);
-                        else
-                            throw new IllegalArgumentException("Out of range");
-                    }
-                    else
-                        throw new AssertionError("Invalid command");
-                }
+                System.out.printf("Final: %s-%s%n", playerScore, enemyScore);
+                return new CombatResults(playerScore > enemyScore, playerScore, "%s-%s".formatted(playerScore, enemyScore));
             }
-
-            // Enemy chooses highest-ranked card, with the
-            // earliest card being used as a tiebreaker
-
-            if (!enemyHand.isEmpty())
+            else if (!doAutoDraw)
             {
-                enemyCard = Optional.of(enemyHand.getFirst());
-                int highestRank = enemyCard.get().rank();
-                for (int i = 1; i < enemyHand.size(); i++)
-                {
-                    if (enemyHand.get(i).rank() > highestRank)
-                    {
-                        enemyCard = Optional.of(enemyHand.get(i));
-                        highestRank = enemyCard.get().rank();
-                    }
-                }
+                if (playerCard.isEmpty())
+                    playerDeck.reshuffle();
+                if (enemyCard.isEmpty())
+                    enemyDeck.reshuffle();
             }
-
-            // Reshuffle here vs during block
-
-            if (playerCard.isEmpty())
-                playerDeck.reshuffle();
-            if (enemyCard.isEmpty())
-                enemyDeck.reshuffle();
 
             // Play the cards against each other
             // Abstracted to playCards() due to shared behavior with normal mode
 
             playCards(playerCard, enemyCard);
 
-            // End game when out of health
+            // !POINTS: End game when out of health
 
-            if (enemyScore <= 0 || playerScore <= 0)
+            if (!doPoints && (enemyScore <= 0 || playerScore <= 0))
             {
                 if (enemyScore <= 0 && playerScore <= 0)
-                    System.out.println(String.format("It's a draw!", playerScore, enemyScore));
+                    System.out.println("It's a draw!");
                 else if (enemyScore <= 0)
-                    System.out.println(String.format("You win %s-%s!", playerScore, enemyScore));
+                    System.out.printf("You win %s-%s!\n", playerScore, enemyScore);
                 else
-                    System.out.println(String.format("You lost %s-%s!", playerScore, enemyScore));
-                return String.format("%s-%s", playerScore, enemyScore);
+                    System.out.printf("You lost %s-%s!\n", playerScore, enemyScore);
+                return new CombatResults(playerScore > 0, playerScore, "%s-%s".formatted(playerScore, enemyScore));
             }
         }
+    }
+
+    // Simple methods used in war mode
+
+    private Optional<Card> drawPlayerTop()
+    {
+        return playerDeck.drawTop();
+    }
+
+    private Optional<Card> drawEnemyTop()
+    {
+        return enemyDeck.drawTop();
+    }
+
+    // Used for letting a player choose within their current hand
+
+    private Optional<Card> drawPlayerCard()
+    {
+        // Fill remaning hand with 3 cards, if possible
+
+        Optional<Card> playerCard = Optional.empty();
+        playerHand.addAll(playerDeck.drawCards(3 - playerHand.size()));
+
+        // Choose card 1-3
+        // Optionally discard unless there is one remaining
+
+        if (!playerHand.isEmpty())
+        {
+            while (true)
+            {
+                // Print message
+
+                System.out.print("You drew");
+                for (int i = 0; i < playerHand.size(); i++)
+                {
+                    System.out.printf(String.format(" %s) %s", i + 1, playerHand.get(i)));
+                }
+                System.out.println();
+
+                // Use Input to validate user's choice
+                // If out of range, error instead of reprompting
+
+                var result = Input.prompt(actionParser, "select/discard (1-%s): ".formatted(playerHand.size()));
+                if (result.getString("command").equals("select"))
+                {
+                    int cardIndex = result.getInt("num") - 1;
+                    if (cardIndex < playerHand.size())
+                    {
+                        playerCard = Optional.of(playerHand.remove(cardIndex));
+                        break;
+                    }
+                    else
+                        throw new IllegalArgumentException("Out of range");
+                }
+                else if (result.getString("command").equals("discard"))
+                {
+                    int cardIndex = result.getInt("num") - 1;
+                    if (playerHand.size() == 1)
+                        throw new IllegalArgumentException("Cannot discard only card");
+                    else if (cardIndex < playerHand.size())
+                        playerHand.remove(cardIndex);
+                    else
+                        throw new IllegalArgumentException("Out of range");
+                }
+                else
+                    throw new AssertionError("Invalid command");
+            }
+        }
+        return playerCard;
+    }
+
+    // For enemy drawing in normal mode, selects one card
+    // and discards the remaining ones
+
+    private Optional<Card> drawEnemyCard()
+    {
+        Optional<Card> enemyCard = Optional.empty();
+        ArrayList<Card> enemyHand = enemyDeck.drawCards(3);
+
+        // Enemy chooses highest-ranked card, with the
+        // earliest card being used as a tiebreaker
+
+        if (!enemyHand.isEmpty())
+        {
+            enemyCard = Optional.of(enemyHand.getFirst());
+            int highestRank = enemyCard.get().rank();
+            for (int i = 1; i < enemyHand.size(); i++)
+            {
+                if (enemyHand.get(i).rank() > highestRank)
+                {
+                    enemyCard = Optional.of(enemyHand.get(i));
+                    highestRank = enemyCard.get().rank();
+                }
+            }
+        }
+        return enemyCard;
     }
 
     private void playCards(Optional<Card> playerChoice, Optional<Card> enemyChoice)
@@ -324,7 +376,7 @@ public final class CombatManager
 
         // Modify the score/HP, depending on mode
 
-        if (warMode)
+        if (doPoints)
         {
             if (target == Entity.PLAYER || target == Entity.BOTH)
                 enemyScore += damage;
@@ -347,25 +399,25 @@ public final class CombatManager
         else
         {
             if (playerChoice.isEmpty())
-                actionString += (warMode) ? "You played nothing " : "You reshuffled ";
+                actionString += (doAutoDraw) ? "You played nothing " : "You reshuffled ";
             else
                 actionString += String.format("You played %s ", playerChoice.get());
 
             if (enemyChoice.isEmpty())
-                actionString += (warMode) ? "vs nothing, " : "while the enemy reshuffled, ";
+                actionString += (doAutoDraw) ? "vs nothing, " : "while the enemy reshuffled, ";
             else
                 actionString += String.format("vs %s, ", enemyChoice.get());
 
             String pointsStr = String.format("%s point%s", damage, (damage == 1) ? "" : "s");
             actionString += switch (target)
             {
-                case Entity.ENEMY -> (warMode)
+                case Entity.ENEMY -> (doPoints)
                     ? String.format("scoring %s!", pointsStr)
                     : String.format("dealing %s damage!", damage);
-                case Entity.PLAYER -> (warMode)
+                case Entity.PLAYER -> (doPoints)
                     ? String.format("enemy scores %s!", pointsStr)
                     : String.format("taking %s damage!", damage);
-                case Entity.BOTH -> (warMode)
+                case Entity.BOTH -> (doPoints)
                     ? String.format("everybody scores %s!", pointsStr)
                     : String.format("everybody takes %s damage!", damage);
                 default -> throw new UnsupportedOperationException("Invalid target");
