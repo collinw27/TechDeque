@@ -1,0 +1,99 @@
+package oop.practical.techdeque.game;
+
+import net.sourceforge.argparse4j.ArgumentParsers;
+import net.sourceforge.argparse4j.impl.Arguments;
+
+import java.util.List;
+import java.util.Optional;
+
+public final class GameManager {
+
+  public List<Object> loop() {
+    // See https://argparse4j.github.io for documentation
+    var parser = ArgumentParsers.newFor("").build();
+    var subparsers = parser.addSubparsers().dest("command");
+
+    var card = subparsers.addParser("card");
+    card.addArgument("spec").type(String.class);
+
+    var deck = subparsers.addParser("deck");
+    var deckSubparsers = deck.addSubparsers().dest("subcommand");
+    var deckView = deckSubparsers.addParser("view");
+    deckView.addArgument("name").type(String.class).nargs("?");
+    var deckEdit = deckSubparsers.addParser("edit");
+    deckEdit.addArgument("name").type(String.class).nargs("?");
+    var deckLoad = deckSubparsers.addParser("load");
+    deckLoad.addArgument("name").type(String.class);
+    var deckSave = deckSubparsers.addParser("save");
+    deckSave.addArgument("name").type(String.class);
+
+    var playerDeck = subparsers.addParser("playerDeck");
+    playerDeck.addArgument("--equip").type(String.class);
+    playerDeck.addArgument("cards").type(String.class).nargs("*");
+
+    var enemyDeck = subparsers.addParser("enemyDeck");
+    enemyDeck.addArgument("--equip").type(String.class);
+    enemyDeck.addArgument("cards").type(String.class).nargs("*");
+
+    var combat = subparsers.addParser("combat");
+    combat.addArgument("--war").action(Arguments.storeTrue());
+
+    var play = subparsers.addParser("play");
+    play.addArgument("--war").action(Arguments.storeTrue());
+
+    System.out.println("Welcome to TechDeque! Enter -h for help.");
+    return Input.loop(parser, args -> switch (args.getString("command")) {
+      case "card" -> card(args.get("spec"));
+      case "deck" -> switch (args.getString("subcommand")) {
+        case "view" -> deckView(Optional.ofNullable(args.getString("name")));
+        case "edit" -> deckEdit(Optional.ofNullable(args.getString("name")));
+        case "load" -> deckLoad(args.getString("name"));
+        case "save" -> deckSave(args.getString("name"));
+        default -> throw new AssertionError(args.getString("subcommand"));
+      };
+      case "playerDeck" -> playerDeck(Optional.ofNullable(args.getString("equip")), args.get("cards"));
+      case "enemyDeck" -> enemyDeck(Optional.ofNullable(args.getString("equip")), args.get("cards"));
+      case "combat" -> combat(args.getBoolean("war"));
+      case "play" -> play(args.getBoolean("war"));
+      default -> throw new AssertionError(args.getString("command"));
+    });
+  }
+
+  private Object card(String spec) {
+    throw new UnsupportedOperationException("TODO"); //TODO
+  }
+
+  private Object deckView(Optional<String> name) {
+    throw new UnsupportedOperationException("TODO"); //TODO
+  }
+
+  private List<Object> deckEdit(Optional<String> name) {
+    throw new UnsupportedOperationException("TODO"); //TODO
+  }
+
+  private Object deckLoad(String name) {
+    throw new UnsupportedOperationException("TODO"); //TODO
+  }
+
+  private boolean deckSave(String name) {
+    throw new UnsupportedOperationException("TODO"); //TODO
+    //return true; //Note: Just always return true as failure throws.
+  }
+
+  private Object playerDeck(Optional<String> equip, List<String> cards) {
+    throw new UnsupportedOperationException("TODO"); //TODO
+  }
+
+  private Object enemyDeck(Optional<String> equip, List<String> cards) {
+    throw new UnsupportedOperationException("TODO"); //TODO
+  }
+
+  private Object combat(boolean war) {
+    throw new UnsupportedOperationException("TODO"); //TODO
+  }
+
+  private List<Object> play(boolean war) {
+    throw new UnsupportedOperationException("TODO"); //TODO
+  }
+
+}

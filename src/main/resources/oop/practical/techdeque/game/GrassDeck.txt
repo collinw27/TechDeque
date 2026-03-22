@@ -1,0 +1,18 @@
+deck edit Grass
+clear
+add Grass-I 3
+add Grass-II 2
+add Grass-III 2
+add Grass-IV 1
+add Grass-V 1
+add GrassShield 1
+add GrassSpear 1
+add Solarbeam 1
+add Water-I 2
+add Water-II 1
+add Water-III 1
+add Fire-I 1
+add Fire-II 1
+add FireShield 1
+add FireSpear 1
+exit

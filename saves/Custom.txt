@@ -1,0 +1,9 @@
+deck edit Custom
+clear
+add Fire-I 1
+add Fire-I 1
+add Fire-I 1
+add Grass-II 1
+add Grass-II 1
+add Water-III 1
+exit

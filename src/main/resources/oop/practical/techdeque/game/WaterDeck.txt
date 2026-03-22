@@ -1,0 +1,18 @@
+deck edit Water
+clear
+add Water-I 3
+add Water-II 2
+add Water-III 2
+add Water-IV 1
+add Water-V 1
+add WaterShield 1
+add WaterSpear 1
+add Tempest 1
+add Fire-I 2
+add Fire-II 1
+add Fire-III 1
+add Grass-I 1
+add Grass-II 1
+add GrassShield 1
+add GrassSpear 1
+exit

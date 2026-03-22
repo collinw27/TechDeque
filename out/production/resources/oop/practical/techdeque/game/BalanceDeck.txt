@@ -1,0 +1,21 @@
+deck edit Balance
+clear
+add Fire-I 2
+add Fire-II 2
+add Fire-III 1
+add Fire-IV 1
+add Fire-V 1
+add FireShield 1
+add FireSpear 1
+add Inferno 1
+add Grass-I 1
+add Grass-II 1
+add Grass-IV 1
+add GrassShield 1
+add GrassSpear 1
+add Water-I 1
+add Water-II 1
+add Water-IV 1
+add WaterShield 1
+add WaterSpear 1
+exit
