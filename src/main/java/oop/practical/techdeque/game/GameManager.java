@@ -53,6 +53,9 @@ public final class GameManager
         subparsers.addParser("test");
         subparsers.addParser("exit");
 
+        var play = subparsers.addParser("play");
+        play.addArgument("--war").action(Arguments.storeTrue());
+
         print("Welcome to TechDeque! Enter -h for help.");
         return Input.loop(parser, args -> switch (args.getString("command")) {
             case "card" -> card(args.get("spec"));
@@ -66,6 +69,7 @@ public final class GameManager
             case "playerDeck" -> playerDeck(Optional.ofNullable(args.getString("equip")), args.get("cards"));
             case "enemyDeck" -> enemyDeck(Optional.ofNullable(args.getString("equip")), args.get("cards"));
             case "combat" -> combat(args.getBoolean("war"));
+            case "play" -> play(args.getBoolean("war"));
             case "test" -> testCombat();
             case "exit" -> null;
             default -> throw new AssertionError(args.getString("command"));
@@ -300,7 +304,6 @@ public final class GameManager
 
     private EditableDeck equipDeck(Optional<String> equip, List<String> cards)
     {
-
         EditableDeck deck = new EditableDeck();
         if (equip.isPresent())
         {
@@ -326,6 +329,12 @@ public final class GameManager
     {
         CombatManager combatManager = new CombatManager(playerDeck.buildDeck(), enemyDeck.buildDeck(), war);
         return combatManager.start();
+    }
+
+    private Object play(boolean war)
+    {
+        WorldManager worldManager = new WorldManager(playerDeck.buildDeck(), enemyDeck.buildDeck(), war);
+        return worldManager.start();
     }
 
     private Object testCombat()
