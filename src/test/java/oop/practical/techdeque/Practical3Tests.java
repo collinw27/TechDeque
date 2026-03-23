@@ -27,8 +27,8 @@ public final class Practical3Tests {
                 combat --war
                 """, "2-0"),
             Arguments.of("Shield Hanging Activated", """
-                playerDeck FireShield Grass-I Grass-I
-                enemyDeck Grass-I Fire-V Fire-V
+                playerDeck FireShield Grass-I
+                enemyDeck Grass-I Fire-V
                 combat --war
                 """, "0-0"),
             Arguments.of("Shield Hanging Consumed", """

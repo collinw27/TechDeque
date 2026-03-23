@@ -69,9 +69,11 @@ public final class CombatManager
 
     // Tidy container for passing between combat functions
 
+    private enum SpecialEffect { NONE, SHIELD_APPLIED, SHIELD_PIERCED, SHIELD_NEGATED }
     private record RoundResult(
         Entity target,
-        int damage
+        int damage,
+        SpecialEffect specialEffect
     ) {}
 
     // Allows the world map to get more detail about the results
@@ -133,7 +135,7 @@ public final class CombatManager
             {
                 for (CombatEntity entity : combatants.values())
                 {
-                    if (entity.deck.isEmpty())
+                    if (entity.card.isEmpty())
                         entity.deck.reshuffle();
                 }
             }
@@ -147,9 +149,20 @@ public final class CombatManager
 
             // Play the cards against each other
             // The loser gets a chance to use their shield
+            // (ONLY if they actually took damage!)
 
-            RoundResult result = playCards(player.card, enemy.card);
-            applyResult(player.card, enemy.card, result);
+            RoundResult normalResult = playCards(player.card, enemy.card);
+            Optional<RoundResult> shieldResult = Optional.empty();
+            if (combatants.containsKey(normalResult.target))
+            {
+                CombatEntity target = combatants.get(normalResult.target);
+                if (normalResult.damage != 0 && target.shield.isPresent())
+                {
+                    shieldResult = Optional.of(playHangingCard(target));
+                    target.shield = Optional.empty();
+                }
+            }
+            applyResult(player.card, enemy.card, normalResult, shieldResult);
 
             // !POINTS: End game when out of health
 
@@ -277,6 +290,9 @@ public final class CombatManager
         }
     }
 
+    // This method is for the first pass of the damage calculation
+    // that doesn't include the shield's hanging effect
+
     private RoundResult playCards(Optional<Card> playerChoice, Optional<Card> enemyChoice)
     {
         // Start by working out how much damage was dealt, and to whom
@@ -347,96 +363,103 @@ public final class CombatManager
 
             // Now that targets have been decided, work out if specialty cards
             // cancel out or add any behavior
+            // This importantly does NOT include hanging effects!
+            // The actor/target were decided as the result of type/rank differences
+            // This eliminates the need for certain checks,
+            // e.g. the actor will never be at a type disadvantage
 
             Card actorCard = (target == Entity.ENEMY) ? playerCard : enemyCard;
             Card targetCard = (target == Entity.PLAYER) ? playerCard : enemyCard;
             Optional<Card.Specialty> actorSpecialty = actorCard.specialty();
             Optional<Card.Specialty> targetSpecialty = targetCard.specialty();
 
-            // The actor/target were decided as the result of type/rank differences
-            // This eliminates the need for certain checks,
-            // e.g. the actor will never be at a type disadvantage
+            // Perform the following checks:
+            // 1) Did the actor play a shield?
 
-            if (targetSpecialty.isPresent() && targetSpecialty.get().equals(Card.Specialty.SHIELD))
-            {
-                // Shield negation
-
-                if (typeDifference == 0)
-                    damage = 0;
-
-                // Spear override (potential type advantage)
-
-                if (actorSpecialty.isPresent() && actorSpecialty.get().equals(Card.Specialty.SPEAR))
-                {
-                    damage = 1 + abs(rankDifference);
-                    if (typeDifference != 0)
-                        damage += 3;
-                }
-            }
             if (actorSpecialty.isPresent() && actorSpecialty.get().equals(Card.Specialty.SHIELD))
-            {
-                // Shield no-op
-
                 damage = 0;
 
-                // Spear override (no type advantage)
+            // 2) Does an ultimate bonus apply (rank I/II)?
 
-                if (targetSpecialty.isPresent() && targetSpecialty.get().equals(Card.Specialty.SPEAR))
-                {
-                    damage = 1;
-                    if (typeDifference == 0)
-                        damage += abs(rankDifference);
-                    target = target.opponent();
-                }
-            }
-            if (actorSpecialty.isPresent() && actorSpecialty.get().equals(Card.Specialty.ULTIMATE))
-            {
-                // Ultimate attack
+            if (actorSpecialty.isPresent() && actorSpecialty.get().equals(Card.Specialty.ULTIMATE) && typeDifference != 0 && targetCard.rank() <= 2)
+                damage += 1;
 
-                if (typeDifference != 0 && targetCard.rank() <= 2)
-                    damage += 1;
+            // 3) Does an ultimate negation apply (rank I/II)?
 
-                // Same-type ultimate attack (also applies against shield)
+            if (targetSpecialty.isPresent() && targetSpecialty.get().equals(Card.Specialty.ULTIMATE) && actorCard.rank() <= 2)
+                damage = 0;
 
-                else if (typeDifference == 0)
-                    damage = abs(rankDifference);
-            }
-            if (targetSpecialty.isPresent() && targetSpecialty.get().equals(Card.Specialty.ULTIMATE))
-            {
-                // Ultimate negation if rank <= 2
-
-                if (actorCard.rank() <= 2)
-                    damage = 0;
-            }
+            // Any remaining checks require a hanging effect to be present
         }
         while (false);
-
-        return new RoundResult(target, damage);
+        return new RoundResult(target, damage, SpecialEffect.NONE);
     }
 
-    private void applyResult(Optional<Card> playerChoice, Optional<Card> enemyChoice, RoundResult result)
+    // This method calculates the result if a shield's hanging effect is used
+    // The main loop is responsible for deciding whether this overrides the
+    // previous result or not
+
+    private RoundResult playHangingCard(CombatEntity actor)
     {
+        CombatEntity target = combatants.get(actor.type.opponent());
+        Card shieldCard = actor.shield.orElseThrow(() -> new AssertionError("Actor does not have a shield."));
+        Card targetCard = target.card.orElseThrow(() -> new AssertionError("The actor somehow took damage from a blank card."));
+
+        // Perform the following checks:
+        // 1) A shield always blocks a normal card
+        // This is considered a win for the actor, which will cancel the
+        // target's damage from the previous calculation
+
+        if (targetCard.specialty().isEmpty())
+            return new RoundResult(target.type, 0, SpecialEffect.SHIELD_APPLIED);
+
+        // 2) A spear wins against a shield
+        // Added damage = type differential
+
+        if (targetCard.isSpecialty(Card.Specialty.SPEAR))
+            return new RoundResult(actor.type, targetCard.compareType(shieldCard), SpecialEffect.SHIELD_PIERCED);
+
+        // 3) An ultimate negates a shield's effect
+        // This is simply a 0-damage win for the target, which will
+        // keep the target's damage from the previous calculation
+
+        if (targetCard.isSpecialty(Card.Specialty.ULTIMATE))
+            return new RoundResult(actor.type, 0, SpecialEffect.SHIELD_NEGATED);
+
+        throw new AssertionError("The actor somehow too damage from a shield.");
+    }
+
+    private void applyResult(Optional<Card> playerChoice, Optional<Card> enemyChoice, RoundResult result, Optional<RoundResult> shieldResult)
+    {
+        // If the two checks resulted in 2 different winners, the
+        // shield result takes priority. Otherwise, the effects stack.
+
+        Entity target = (shieldResult.isPresent()) ? shieldResult.get().target : result.target;
+        int damage = (shieldResult.isPresent()) ? shieldResult.get().damage : result.damage;
+        if (shieldResult.isPresent() && target == result.target)
+            damage += result.damage;
+
         // Modify the score/HP, depending on mode
 
         if (doPoints)
         {
-            if (result.target == Entity.PLAYER || result.target == Entity.BOTH)
-                enemy.score += result.damage;
-            if (result.target == Entity.ENEMY || result.target == Entity.BOTH)
-                player.score += result.damage;
+            if (target == Entity.PLAYER || target == Entity.BOTH)
+                enemy.score += damage;
+            if (target == Entity.ENEMY || target == Entity.BOTH)
+                player.score += damage;
         }
         else
         {
-            if (result.target == Entity.PLAYER || result.target == Entity.BOTH)
-                player.HP = max(player.HP - result.damage, 0);
-            if (result.target == Entity.ENEMY || result.target == Entity.BOTH)
-                enemy.HP = max(enemy.HP - result.damage, 0);
+            if (target == Entity.PLAYER || target == Entity.BOTH)
+                player.HP = max(player.HP - damage, 0);
+            if (target == Entity.ENEMY || target == Entity.BOTH)
+                enemy.HP = max(enemy.HP - damage, 0);
         }
 
         // Now for the fun part, print the appropriate message
 
         String actionString = "";
-        if (result.target == Entity.NONE)
+        if (target == Entity.NONE)
             actionString = "It's a draw!";
         else
         {
@@ -449,19 +472,21 @@ public final class CombatManager
                 actionString += (doAutoDraw) ? "vs nothing, " : "while the enemy reshuffled, ";
             else
                 actionString += String.format("vs %s, ", enemyChoice.get());
+            String pointsStr = String.format("%s point%s", damage, (damage == 1) ? "" : "s");
 
-            String pointsStr = String.format("%s point%s", result.damage, (result.damage == 1) ? "" : "s");
-            actionString += switch (result.target)
+            // Normal result just prints the damage/score differential
+
+            actionString += switch (target)
             {
                 case Entity.ENEMY -> (doPoints)
                         ? String.format("scoring %s!", pointsStr)
-                        : String.format("dealing %s damage!", result.damage);
+                        : String.format("dealing %s damage!", damage);
                 case Entity.PLAYER -> (doPoints)
                         ? String.format("enemy scores %s!", pointsStr)
-                        : String.format("taking %s damage!", result.damage);
+                        : String.format("taking %s damage!", damage);
                 case Entity.BOTH -> (doPoints)
                         ? String.format("everybody scores %s!", pointsStr)
-                        : String.format("everybody takes %s damage!", result.damage);
+                        : String.format("everybody takes %s damage!", damage);
                 default -> throw new UnsupportedOperationException("Invalid target");
             };
         }
