@@ -7,8 +7,9 @@ import oop.practical.techdeque.deck.Card;
 import oop.practical.techdeque.deck.Deck;
 import oop.practical.techdeque.game.Input;
 
-import javax.swing.text.html.Option;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 
 import static java.lang.Math.abs;
@@ -16,9 +17,6 @@ import static java.lang.Math.max;
 
 public final class CombatManager
 {
-    private Deck playerDeck;
-    private Deck enemyDeck;
-
     // As it existed before, war mode implied 2 things:
     // 1) automatic drawing & no reshuffle, 2) points instead of health
     // However, since war mode can now be played using health,
@@ -31,18 +29,7 @@ public final class CombatManager
     private boolean doPoints;
     private ArgumentParser actionParser;
 
-    // Entity state
-    // Called `score` for generality, but can also represent HP as well
-    // It's fine that we don't have a way of resetting these, since each
-    // instance of this class should represent its own game
-
-    private int playerScore = 0;
-    private int enemyScore = 0;
-    private Optional<Card> playerShield = Optional.empty();
-    private Optional<Card> enemyShield = Optional.empty();
-    private ArrayList<Card> playerHand = new ArrayList<>();
-
-    // For use later on
+    // Player and enemy state are both stored in CombatEntity instance
 
     private enum Entity {
         NONE, PLAYER, ENEMY, BOTH;
@@ -57,6 +44,28 @@ public final class CombatManager
             };
         }
     }
+
+    private class CombatEntity
+    {
+        public Entity type;
+        public Deck deck;
+        public ArrayList<Card> hand = new ArrayList<>();
+        public int score = 0;
+        public int HP = 10;
+        // HP defaults to 10, and can be modified manually
+        public Optional<Card> shield = Optional.empty();
+        public Optional<Card> card = Optional.empty();
+
+        CombatEntity(Entity type, Deck deck)
+        {
+            this.type = type;
+            this.deck = deck;
+        }
+    }
+
+    CombatEntity player;
+    CombatEntity enemy;
+    private HashMap<Entity, CombatEntity> combatants = new HashMap<>();
 
     // Tidy container for passing between combat functions
 
@@ -75,18 +84,12 @@ public final class CombatManager
 
     public CombatManager(Deck playerDeck, Deck enemyDeck, Mode gameMode)
     {
-        this.playerDeck = playerDeck.copy();
-        this.enemyDeck = enemyDeck.copy();
-        this.doAutoDraw = (gameMode != Mode.NORMAL);
-        this.doPoints = (gameMode == Mode.WAR_POINTS);
+        doAutoDraw = (gameMode != Mode.NORMAL);
+        doPoints = (gameMode == Mode.WAR_POINTS);
 
-        // HP defaults to 10, and can be modified manually
-
-        if (!doPoints)
-        {
-            playerScore = 10;
-            enemyScore = 10;
-        }
+        player = new CombatEntity(Entity.PLAYER, playerDeck.copy());
+        enemy = new CombatEntity(Entity.ENEMY, enemyDeck.copy());
+        combatants = new HashMap<>(Map.of(Entity.PLAYER, player, Entity.ENEMY, enemy));
 
         // Easier to set up parser here instead of after starting
 
@@ -104,8 +107,8 @@ public final class CombatManager
     {
         if (!doPoints)
         {
-            playerScore = playerHP;
-            enemyScore = enemyHP;
+            player.HP = playerHP;
+            enemy.HP = enemyHP;
         }
     }
 
@@ -115,51 +118,50 @@ public final class CombatManager
         {
             // Automatically draw (dependent on mode)
 
-            Optional<Card> playerCard = doAutoDraw ? drawPlayerTop() : drawPlayerCard();
-            Optional<Card> enemyCard = doAutoDraw ? drawEnemyTop() : drawEnemyCard();
+            player.card = doAutoDraw ? drawPlayerTop() : drawPlayerCard();
+            enemy.card = doAutoDraw ? drawEnemyTop() : drawEnemyCard();
 
             // AUTODRAW: Terminate if neither drew a card, winner has most score/HP
             // !AUTODRAW: Reshuffle if empty
 
-            if (doAutoDraw && playerCard.isEmpty() && enemyCard.isEmpty())
+            if (doAutoDraw && player.card.isEmpty() && enemy.card.isEmpty())
             {
-                System.out.printf("Final: %s-%s%n", playerScore, enemyScore);
-                return new CombatResult(playerScore > enemyScore, playerScore, "%s-%s".formatted(playerScore, enemyScore));
+                System.out.printf("Final: %s-%s%n", player.score, enemy.score);
+                return new CombatResult(player.score > enemy.score, player.HP, "%s-%s".formatted(player.score, enemy.score));
             }
             else if (!doAutoDraw)
             {
-                if (playerCard.isEmpty())
-                    playerDeck.reshuffle();
-                if (enemyCard.isEmpty())
-                    enemyDeck.reshuffle();
+                for (CombatEntity entity : combatants.values())
+                {
+                    if (entity.deck.isEmpty())
+                        entity.deck.reshuffle();
+                }
             }
 
             // Equip shield before any cards are played
             // If a shield is equipped this turn, the played card
             // will technically be a null card
 
-            if (attemptEquip(Entity.PLAYER, playerCard))
-                playerCard = Optional.empty();
-            if (attemptEquip(Entity.ENEMY, enemyCard))
-                enemyCard = Optional.empty();
+            attemptEquip(player);
+            attemptEquip(enemy);
 
             // Play the cards against each other
             // The loser gets a chance to use their shield
 
-            RoundResult result = playCards(playerCard, enemyCard);
-            applyResult(playerCard, enemyCard, result);
+            RoundResult result = playCards(player.card, enemy.card);
+            applyResult(player.card, enemy.card, result);
 
             // !POINTS: End game when out of health
 
-            if (!doPoints && (enemyScore <= 0 || playerScore <= 0))
+            if (enemy.HP <= 0 || player.HP <= 0)
             {
-                if (enemyScore <= 0 && playerScore <= 0)
+                if (enemy.HP <= 0 && player.HP <= 0)
                     System.out.println("It's a draw!");
-                else if (enemyScore <= 0)
-                    System.out.printf("You win %s-%s!\n", playerScore, enemyScore);
+                else if (enemy.HP <= 0)
+                    System.out.printf("You win %s-%s!\n", player.HP, enemy.HP);
                 else
-                    System.out.printf("You lost %s-%s!\n", playerScore, enemyScore);
-                return new CombatResult(playerScore > 0, playerScore, "%s-%s".formatted(playerScore, enemyScore));
+                    System.out.printf("You lost %s-%s!\n", player.HP, enemy.HP);
+                return new CombatResult(player.HP > 0, player.HP, "%s-%s".formatted(player.HP, enemy.HP));
             }
         }
     }
@@ -168,12 +170,12 @@ public final class CombatManager
 
     private Optional<Card> drawPlayerTop()
     {
-        return playerDeck.drawTop();
+        return player.deck.drawTop();
     }
 
     private Optional<Card> drawEnemyTop()
     {
-        return enemyDeck.drawTop();
+        return enemy.deck.drawTop();
     }
 
     // Used for letting a player choose within their current hand
@@ -183,34 +185,34 @@ public final class CombatManager
         // Fill remaning hand with 3 cards, if possible
 
         Optional<Card> playerCard = Optional.empty();
-        playerHand.addAll(playerDeck.drawCards(3 - playerHand.size()));
+        player.hand.addAll(player.deck.drawCards(3 - player.hand.size()));
 
         // Choose card 1-3
         // Optionally discard unless there is one remaining
 
-        if (!playerHand.isEmpty())
+        if (!player.hand.isEmpty())
         {
             while (true)
             {
                 // Print message
 
                 System.out.print("You drew");
-                for (int i = 0; i < playerHand.size(); i++)
+                for (int i = 0; i < player.hand.size(); i++)
                 {
-                    System.out.printf(String.format(" %s) %s", i + 1, playerHand.get(i)));
+                    System.out.printf(String.format(" %s) %s", i + 1, player.hand.get(i)));
                 }
                 System.out.println();
 
                 // Use Input to validate user's choice
                 // If out of range, error instead of reprompting
 
-                var result = Input.prompt(actionParser, "select/discard (1-%s): ".formatted(playerHand.size()));
+                var result = Input.prompt(actionParser, "select/discard (1-%s): ".formatted(player.hand.size()));
                 if (result.getString("command").equals("select"))
                 {
                     int cardIndex = result.getInt("num") - 1;
-                    if (cardIndex < playerHand.size())
+                    if (cardIndex < player.hand.size())
                     {
-                        playerCard = Optional.of(playerHand.remove(cardIndex));
+                        playerCard = Optional.of(player.hand.remove(cardIndex));
                         break;
                     }
                     else
@@ -219,10 +221,10 @@ public final class CombatManager
                 else if (result.getString("command").equals("discard"))
                 {
                     int cardIndex = result.getInt("num") - 1;
-                    if (playerHand.size() == 1)
+                    if (player.hand.size() == 1)
                         throw new IllegalArgumentException("Cannot discard only card");
-                    else if (cardIndex < playerHand.size())
-                        playerHand.remove(cardIndex);
+                    else if (cardIndex < player.hand.size())
+                        player.hand.remove(cardIndex);
                     else
                         throw new IllegalArgumentException("Out of range");
                 }
@@ -235,11 +237,12 @@ public final class CombatManager
 
     // For enemy drawing in normal mode, selects one card
     // and discards the remaining ones
+    // Thus, the enemy hand isn't utilized
 
     private Optional<Card> drawEnemyCard()
     {
         Optional<Card> enemyCard = Optional.empty();
-        ArrayList<Card> enemyHand = enemyDeck.drawCards(3);
+        ArrayList<Card> enemyHand = enemy.deck.drawCards(3);
 
         // Enemy chooses highest-ranked card, with the
         // earliest card being used as a tiebreaker
@@ -260,20 +263,18 @@ public final class CombatManager
         return enemyCard;
     }
 
-    private boolean attemptEquip(Entity entity, Optional<Card> card)
+    private void attemptEquip(CombatEntity entity)
     {
-        if (card.isPresent() && card.get().isSpecialty(Card.Specialty.SHIELD))
+        if (entity.card.isPresent() && entity.card.get().isSpecialty(Card.Specialty.SHIELD))
         {
-            System.out.print(entity == Entity.PLAYER ? "You " : "The enemy ");
-            System.out.printf("equipped %s", card.get());
-            Optional<Card> currentShield = (entity == Entity.PLAYER) ? playerShield : enemyShield;
-            if (currentShield.isPresent())
-                System.out.printf(", replacing %s.\n", currentShield.get());
+            System.out.print(entity.type == Entity.PLAYER ? "You " : "The enemy ");
+            System.out.printf("equipped %s", entity.card.get());
+            if (entity.shield.isPresent())
+                System.out.printf(", replacing %s.\n", entity.shield.get());
             else
                 System.out.println(".");
-            return true;
+            entity.shield = Optional.of(entity.card.get());
         }
-        return false;
     }
 
     private RoundResult playCards(Optional<Card> playerChoice, Optional<Card> enemyChoice)
@@ -420,16 +421,16 @@ public final class CombatManager
         if (doPoints)
         {
             if (result.target == Entity.PLAYER || result.target == Entity.BOTH)
-                enemyScore += result.damage;
+                enemy.score += result.damage;
             if (result.target == Entity.ENEMY || result.target == Entity.BOTH)
-                playerScore += result.damage;
+                player.score += result.damage;
         }
         else
         {
             if (result.target == Entity.PLAYER || result.target == Entity.BOTH)
-                playerScore = max(playerScore - result.damage, 0);
+                player.HP = max(player.HP - result.damage, 0);
             if (result.target == Entity.ENEMY || result.target == Entity.BOTH)
-                enemyScore = max(enemyScore - result.damage, 0);
+                enemy.HP = max(enemy.HP - result.damage, 0);
         }
 
         // Now for the fun part, print the appropriate message
@@ -465,6 +466,9 @@ public final class CombatManager
             };
         }
 
-        System.out.printf("%s (%s, %s)\n", actionString, playerScore, enemyScore);
+        if (doPoints)
+            System.out.printf("%s (%s, %s)\n", actionString, player.score, enemy.score);
+        else
+            System.out.printf("%s (%s, %s)\n", actionString, player.HP, enemy.HP);
     }
 }
