@@ -7,6 +7,7 @@ import oop.practical.techdeque.deck.Card;
 import oop.practical.techdeque.deck.Deck;
 import oop.practical.techdeque.game.Input;
 
+import javax.swing.text.html.Option;
 import java.util.ArrayList;
 import java.util.Optional;
 
@@ -37,6 +38,8 @@ public final class CombatManager
 
     private int playerScore = 0;
     private int enemyScore = 0;
+    private Optional<Card> playerShield = Optional.empty();
+    private Optional<Card> enemyShield = Optional.empty();
     private ArrayList<Card> playerHand = new ArrayList<>();
 
     // For use later on
@@ -55,9 +58,16 @@ public final class CombatManager
         }
     }
 
+    // Tidy container for passing between combat functions
+
+    private record RoundResult(
+        Entity target,
+        int damage
+    ) {}
+
     // Allows the world map to get more detail about the results
 
-    public record CombatResults(
+    public record CombatResult(
         boolean playerWon,
         int playerResult,
         String resultString
@@ -99,7 +109,7 @@ public final class CombatManager
         }
     }
 
-    public CombatResults start()
+    public CombatResult start()
     {
         while (true)
         {
@@ -114,7 +124,7 @@ public final class CombatManager
             if (doAutoDraw && playerCard.isEmpty() && enemyCard.isEmpty())
             {
                 System.out.printf("Final: %s-%s%n", playerScore, enemyScore);
-                return new CombatResults(playerScore > enemyScore, playerScore, "%s-%s".formatted(playerScore, enemyScore));
+                return new CombatResult(playerScore > enemyScore, playerScore, "%s-%s".formatted(playerScore, enemyScore));
             }
             else if (!doAutoDraw)
             {
@@ -124,10 +134,20 @@ public final class CombatManager
                     enemyDeck.reshuffle();
             }
 
-            // Play the cards against each other
-            // Abstracted to playCards() due to shared behavior with normal mode
+            // Equip shield before any cards are played
+            // If a shield is equipped this turn, the played card
+            // will technically be a null card
 
-            playCards(playerCard, enemyCard);
+            if (attemptEquip(Entity.PLAYER, playerCard))
+                playerCard = Optional.empty();
+            if (attemptEquip(Entity.ENEMY, enemyCard))
+                enemyCard = Optional.empty();
+
+            // Play the cards against each other
+            // The loser gets a chance to use their shield
+
+            RoundResult result = playCards(playerCard, enemyCard);
+            applyResult(playerCard, enemyCard, result);
 
             // !POINTS: End game when out of health
 
@@ -139,7 +159,7 @@ public final class CombatManager
                     System.out.printf("You win %s-%s!\n", playerScore, enemyScore);
                 else
                     System.out.printf("You lost %s-%s!\n", playerScore, enemyScore);
-                return new CombatResults(playerScore > 0, playerScore, "%s-%s".formatted(playerScore, enemyScore));
+                return new CombatResult(playerScore > 0, playerScore, "%s-%s".formatted(playerScore, enemyScore));
             }
         }
     }
@@ -240,7 +260,23 @@ public final class CombatManager
         return enemyCard;
     }
 
-    private void playCards(Optional<Card> playerChoice, Optional<Card> enemyChoice)
+    private boolean attemptEquip(Entity entity, Optional<Card> card)
+    {
+        if (card.isPresent() && card.get().isSpecialty(Card.Specialty.SHIELD))
+        {
+            System.out.print(entity == Entity.PLAYER ? "You " : "The enemy ");
+            System.out.printf("equipped %s", card.get());
+            Optional<Card> currentShield = (entity == Entity.PLAYER) ? playerShield : enemyShield;
+            if (currentShield.isPresent())
+                System.out.printf(", replacing %s.\n", currentShield.get());
+            else
+                System.out.println(".");
+            return true;
+        }
+        return false;
+    }
+
+    private RoundResult playCards(Optional<Card> playerChoice, Optional<Card> enemyChoice)
     {
         // Start by working out how much damage was dealt, and to whom
         // Do-While is used to allow `break`, reducing nested if-else
@@ -374,27 +410,32 @@ public final class CombatManager
         }
         while (false);
 
+        return new RoundResult(target, damage);
+    }
+
+    private void applyResult(Optional<Card> playerChoice, Optional<Card> enemyChoice, RoundResult result)
+    {
         // Modify the score/HP, depending on mode
 
         if (doPoints)
         {
-            if (target == Entity.PLAYER || target == Entity.BOTH)
-                enemyScore += damage;
-            if (target == Entity.ENEMY || target == Entity.BOTH)
-                playerScore += damage;
+            if (result.target == Entity.PLAYER || result.target == Entity.BOTH)
+                enemyScore += result.damage;
+            if (result.target == Entity.ENEMY || result.target == Entity.BOTH)
+                playerScore += result.damage;
         }
         else
         {
-            if (target == Entity.PLAYER || target == Entity.BOTH)
-                playerScore = max(playerScore - damage, 0);
-            if (target == Entity.ENEMY || target == Entity.BOTH)
-                enemyScore = max(enemyScore - damage, 0);
+            if (result.target == Entity.PLAYER || result.target == Entity.BOTH)
+                playerScore = max(playerScore - result.damage, 0);
+            if (result.target == Entity.ENEMY || result.target == Entity.BOTH)
+                enemyScore = max(enemyScore - result.damage, 0);
         }
 
         // Now for the fun part, print the appropriate message
 
         String actionString = "";
-        if (target == Entity.NONE)
+        if (result.target == Entity.NONE)
             actionString = "It's a draw!";
         else
         {
@@ -408,18 +449,18 @@ public final class CombatManager
             else
                 actionString += String.format("vs %s, ", enemyChoice.get());
 
-            String pointsStr = String.format("%s point%s", damage, (damage == 1) ? "" : "s");
-            actionString += switch (target)
+            String pointsStr = String.format("%s point%s", result.damage, (result.damage == 1) ? "" : "s");
+            actionString += switch (result.target)
             {
                 case Entity.ENEMY -> (doPoints)
-                    ? String.format("scoring %s!", pointsStr)
-                    : String.format("dealing %s damage!", damage);
+                        ? String.format("scoring %s!", pointsStr)
+                        : String.format("dealing %s damage!", result.damage);
                 case Entity.PLAYER -> (doPoints)
-                    ? String.format("enemy scores %s!", pointsStr)
-                    : String.format("taking %s damage!", damage);
+                        ? String.format("enemy scores %s!", pointsStr)
+                        : String.format("taking %s damage!", result.damage);
                 case Entity.BOTH -> (doPoints)
-                    ? String.format("everybody scores %s!", pointsStr)
-                    : String.format("everybody takes %s damage!", damage);
+                        ? String.format("everybody scores %s!", pointsStr)
+                        : String.format("everybody takes %s damage!", result.damage);
                 default -> throw new UnsupportedOperationException("Invalid target");
             };
         }

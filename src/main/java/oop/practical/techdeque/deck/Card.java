@@ -108,6 +108,11 @@ public final class Card
         return (specialtyCard.isPresent()) ? Optional.of(specialtyCard.get().specialty) : Optional.empty();
     }
 
+    public boolean isSpecialty(Specialty specialty)
+    {
+        return (specialtyCard.isPresent() && specialtyCard.get().specialty == specialty);
+    }
+
     // Methods that verify the validity of Card formatting are implemented here
     // This is maybe more abstracted than necessary, but it feels more correct than
     // allowing the GameManager to enforce its own constraints on Card state
