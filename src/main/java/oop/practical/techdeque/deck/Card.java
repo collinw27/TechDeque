@@ -12,6 +12,7 @@ public final class Card
 {
     Type type;
     int rank;
+    // `rank` is 1-indexed (i.e. ranges from 1-5)
     Optional<SpecialtyCard> specialtyCard;
 
     public enum Type

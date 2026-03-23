@@ -52,7 +52,7 @@ public final class CombatManager
         public ArrayList<Card> hand = new ArrayList<>();
         public int score = 0;
         public int HP = 10;
-        // HP defaults to 10, and can be modified manually
+        // HP defaults to 10 and can be modified manually
         public Optional<Card> shield = Optional.empty();
         public Optional<Card> card = Optional.empty();
 

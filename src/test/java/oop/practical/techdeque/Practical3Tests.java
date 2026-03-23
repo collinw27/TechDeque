@@ -1,5 +1,6 @@
 package oop.practical.techdeque;
 
+import oop.practical.techdeque.deck.EditableDeck;
 import oop.practical.techdeque.game.GameManager;
 import oop.practical.techdeque.game.Input;
 import org.junit.jupiter.api.Assertions;
@@ -172,6 +173,43 @@ public final class Practical3Tests {
                 move e
                 exit
                 """, new Object[] { "20 (3-0)" })
+        );
+    }
+
+    @ParameterizedTest
+    @MethodSource
+    public void testMiscTest(String name, String commands, Object expected) {
+        test(commands, expected);
+    }
+
+    public static Stream<Arguments> testMiscTest() {
+        return Stream.of(
+            Arguments.of("Valid deck", """
+                deck edit Name
+                add Grass-V 1
+                add Solarbeam 1
+                add Fire-I 2
+                add Grass-I 3
+                add Grass-II 3
+                add Grass-III 2
+                add Grass-IV 2
+                exit
+                playerDeck --equip Name
+                """, true),
+                Arguments.of("Too few rank I/II", """
+                deck edit Name
+                add Grass-V 1
+                add Solarbeam 1
+                add Fire-I 2
+                add Grass-I 2
+                add Grass-II 2
+                add Grass-III 2
+                add Grass-IV 2
+                add Fire-IV 2
+                add Water-IV 2
+                exit
+                playerDeck --equip Name
+                """, IllegalArgumentException.class)
         );
     }
 

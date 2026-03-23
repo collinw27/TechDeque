@@ -86,8 +86,8 @@ public class EditableDeck
     {
         // Validate deck size
 
-        if (cards.size() < 10)
-            throw new IllegalArgumentException("Deck must have at least 10 cards.");
+        if (cards.size() < 12)
+            throw new IllegalArgumentException("Deck must have at least 12 cards.");
 
         // Select deck type & validate card totals
 
@@ -115,11 +115,13 @@ public class EditableDeck
         }
 
         // Ensure half of the deck is of the correct type
-        // Also ensure half is only basic cards
+        // Ensure half is only basic cards
+        // Ensure half is only rank I/II
 
         Card.Type finalDeckType = deckType;
         int typedCards = (int) cards.stream().filter(c -> c.type() == finalDeckType).count();
         int basicCards = (int) cards.stream().filter(c -> (c.specialty().isEmpty())).count();
+        int lowRankCards = (int) cards.stream().filter(c -> (c.rank <= 2)).count();
         int halfDeckSize = (int) Math.ceil(cards.size() / 2.0);
         if (typedCards < halfDeckSize)
             throw new IllegalArgumentException("Deck has too few cards of type %s (%s < %s).".formatted(
@@ -127,8 +129,13 @@ public class EditableDeck
             ));
         if (basicCards < halfDeckSize)
             throw new IllegalArgumentException("Deck has too few basic cards (%s < %s).".formatted(
-                basicCards, halfDeckSize
+                    basicCards, halfDeckSize
             ));
+        if (lowRankCards < halfDeckSize)
+            throw new IllegalArgumentException("Deck has too few rank I/II cards (%s < %s).".formatted(
+                    lowRankCards, halfDeckSize
+            ));
+
     }
 
     public List<String> getStringList()
