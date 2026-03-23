@@ -159,10 +159,11 @@ public final class CombatManager
                 if (normalResult.damage != 0 && target.shield.isPresent())
                 {
                     shieldResult = Optional.of(playHangingCard(target));
-                    target.shield = Optional.empty();
                 }
             }
             applyResult(player.card, enemy.card, normalResult, shieldResult);
+            if (shieldResult.isPresent())
+                consumeShield(combatants.get(normalResult.target));
 
             // !POINTS: End game when out of health
 
@@ -288,6 +289,13 @@ public final class CombatManager
                 System.out.println(".");
             entity.shield = Optional.of(entity.card.get());
         }
+    }
+
+    private void consumeShield(CombatEntity entity)
+    {
+        System.out.print((entity.type == Entity.PLAYER) ? "Your " : "The enemy's ");
+        System.out.printf("%s was consumed!\n", entity.shield.get());
+        entity.shield = Optional.empty();
     }
 
     // This method is for the first pass of the damage calculation
@@ -457,9 +465,10 @@ public final class CombatManager
         }
 
         // Now for the fun part, print the appropriate message
+        // Using the original target makes more sense for this part
 
         String actionString = "";
-        if (target == Entity.NONE)
+        if (result.target == Entity.NONE)
             actionString = "It's a draw!";
         else
         {
@@ -472,11 +481,11 @@ public final class CombatManager
                 actionString += (doAutoDraw) ? "vs nothing, " : "while the enemy reshuffled, ";
             else
                 actionString += String.format("vs %s, ", enemyChoice.get());
-            String pointsStr = String.format("%s point%s", damage, (damage == 1) ? "" : "s");
 
             // Normal result just prints the damage/score differential
 
-            actionString += switch (target)
+            String pointsStr = String.format("%s point%s", damage, (damage == 1) ? "" : "s");
+            actionString += switch (result.target)
             {
                 case Entity.ENEMY -> (doPoints)
                         ? String.format("scoring %s!", pointsStr)
@@ -489,6 +498,26 @@ public final class CombatManager
                         : String.format("everybody takes %s damage!", damage);
                 default -> throw new UnsupportedOperationException("Invalid target");
             };
+
+            // Print the result of special effects
+
+            if (!shieldResult.isEmpty() && shieldResult.get().specialEffect != SpecialEffect.NONE)
+            {
+                String shieldName = combatants.get(result.target).shield.get().toString();
+                if (shieldResult.get().specialEffect == SpecialEffect.SHIELD_APPLIED)
+                {
+                    actionString += " [Blocked by %s]".formatted(shieldName);
+                }
+                else if (shieldResult.get().specialEffect == SpecialEffect.SHIELD_PIERCED)
+                {
+                    String spearName = combatants.get(result.target.opponent()).card.get().toString();
+                    actionString += " [Pierced %s]".formatted(shieldName);
+                }
+                else if (shieldResult.get().specialEffect == SpecialEffect.SHIELD_NEGATED)
+                {
+                    actionString += " [%s negated]".formatted(shieldName);
+                }
+            }
         }
 
         if (doPoints)
